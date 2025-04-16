@@ -130,7 +130,10 @@ if __name__ == '__main__':
         states={
             LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_language)],
             AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)],
-            DEPOSIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_callback)],
+            DEPOSIT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_callback),
+                CallbackQueryHandler(handle_callback)  # ✅ اضافه شد
+            ],
             TXID: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
