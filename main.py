@@ -125,19 +125,23 @@ if __name__ == '__main__':
     TOKEN = os.getenv("BOT_TOKEN")
     app = ApplicationBuilder().token(TOKEN).build()
 
-    conv = ConversationHandler(
+        conv = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
             LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_language)],
             AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)],
             DEPOSIT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_callback),
-                CallbackQueryHandler(handle_callback)  # ✅ اضافه شد
+                CallbackQueryHandler(handle_callback)
             ],
-            TXID: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid)],
+            TXID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid),
+                CallbackQueryHandler(handle_callback)  # ✅ این خط اضافه شد
+            ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
+
 
     app.add_handler(conv)
     app.run_polling()
