@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 
-LANGUAGE, AMOUNT = range(2)
+LANGUAGE, AMOUNT, DEPOSIT = range(3)
 
 langs = {
     "فارسی": "fa",
@@ -20,7 +20,8 @@ messages = {
         ),
         "deposit": "💸 واریز USDT",
         "choose_network": "📲 لطفا شبکه مورد نظر را انتخاب کن:",
-        "wallet": lambda network, address: f"✅ آدرس کیف پول برای {network}:\n`{address}`"
+        "wallet": lambda network, address: f"✅ آدرس کیف پول برای {network}:\n`{address}`",
+        "ask_txid": "لطفا TXID یا اسکرین‌شات واریز خود را ارسال کنید:"
     },
     "en": {
         "start": "Hello! Please choose your language:",
@@ -33,7 +34,8 @@ messages = {
         ),
         "deposit": "💸 Deposit USDT",
         "choose_network": "📲 Please choose the network:",
-        "wallet": lambda network, address: f"✅ Wallet address for {network}:\n`{address}`"
+        "wallet": lambda network, address: f"✅ Wallet address for {network}:\n`{address}`",
+        "ask_txid": "Please send your TXID or a screenshot of the deposit:"
     }
 }
 
@@ -76,7 +78,7 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     deposit_button = [[InlineKeyboardButton(messages[lang]["deposit"], callback_data="deposit")]]
     await update.message.reply_text("👇", reply_markup=InlineKeyboardMarkup(deposit_button))
 
-    return ConversationHandler.END
+    return DEPOSIT
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -97,6 +99,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+    return DEPOSIT
+
+async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = user_lang.get(update.effective_user.id, "en")
+    txid = update.message.text
+    # ارسال به ادمین (به شماره ادمین تغییر بده)
+    admin_id = 536587863  # تغییر به ID ادمین
+    await context.bot.send_message(
+        admin_id,
+        f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
+        f"\nزبان: {lang}"
+        f"\nTXID یا اسکرین‌شات: {txid}"
+    )
+
+    await update.message.reply_text("واریز شما ثبت شد. منتظر تأیید باشید.")
+    return ConversationHandler.END
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("لغو شد / Cancelled")
     return ConversationHandler.END
@@ -110,14 +129,12 @@ if __name__ == '__main__':
         entry_points=[CommandHandler('start', start)],
         states={
             LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_language)],
-            AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)]
+            AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)],
+            DEPOSIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
-    # هندلر اضافه برای تشخیص زبان هر وقت فرستاده شد
-    lang_keys = list(langs.keys())
-    
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.run_polling()
