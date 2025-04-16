@@ -1,13 +1,3 @@
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
-
-LANGUAGE, AMOUNT = range(2)
-
-langs = {
-    "فارسی": "fa",
-    "English": "en"
-}
-
 messages = {
     "fa": {
         "start": "سلام! زبان مورد نظر را انتخاب کن:",
@@ -22,4 +12,7 @@ messages = {
         "ask_amount": "Please enter the investment amount (e.g. 100 USDT):",
         "result": lambda amount: f"""💵 If you invest {amount} USDT:
 📆 Daily profit: {round(amount * 0.5 / 30, 2)} USDT
-📅 Weekly profit: {round(amount * 0.5 / 4,*
+📅 Weekly profit: {round(amount * 0.5 / 4, 2)} USDT
+🗓️ Monthly profit: {round(amount * 0.5, 2)} USDT"""
+    }
+}
