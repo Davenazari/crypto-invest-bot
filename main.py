@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 
-LANGUAGE, AMOUNT, DEPOSIT = range(3)
+LANGUAGE, AMOUNT, DEPOSIT, TXID = range(4)
 
 langs = {
     "فارسی": "fa",
@@ -99,7 +99,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-    return DEPOSIT
+    return TXID
 
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
@@ -130,11 +130,11 @@ if __name__ == '__main__':
         states={
             LANGUAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_language)],
             AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)],
-            DEPOSIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid)],
+            DEPOSIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_callback)],
+            TXID: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
     app.add_handler(conv)
-    app.add_handler(CallbackQueryHandler(handle_callback))
     app.run_polling()
