@@ -126,11 +126,12 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         txid = update.message.text
         admin_id = 536587863  # آیدی ادمین
 
+        # ارسال TXID به ادمین
         await context.bot.send_message(
             admin_id,
             f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
             f"\nزبان: {lang} "
-            f"\nTXID: {txid}"
+            f"\nTXID: {txid}"  # متن TXID به ادمین ارسال می‌شود
         )
 
         await update.message.reply_text("واریز شما ثبت شد. منتظر تأیید باشید.")
