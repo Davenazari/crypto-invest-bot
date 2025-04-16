@@ -117,8 +117,7 @@ if __name__ == '__main__':
 
     # هندلر اضافه برای تشخیص زبان هر وقت فرستاده شد
     lang_keys = list(langs.keys())
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(f"^({'|'.join(lang_keys)})$"), set_language))
-
+    
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.run_polling()
