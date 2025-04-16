@@ -14,9 +14,9 @@ messages = {
         "ask_amount": "لطفا مقدار سرمایه‌گذاری را وارد کن (مثلا 100 تتر):",
         "result": lambda amount: (
             f"💵 با سرمایه‌گذاری {amount} تتر:\n"
-            f"📆 سود روزانه: {round(amount * 0.5 / 30, 2)} تتر\n"
-            f"📅 سود هفتگی: {round(amount * 0.5 / 4, 2)} تتر\n"
-            f"🗓️ سود ماهانه: {round(amount * 0.5, 2)} تتر 💰"
+            f"📆 سود روزانه: {round(amount * 0.5 / 30, 2)} تتر → مجموع: {round(amount + amount * 0.5 / 30, 2)} تتر\n"
+            f"📅 سود هفتگی: {round(amount * 0.5 / 4, 2)} تتر → مجموع: {round(amount + amount * 0.5 / 4, 2)} تتر\n"
+            f"🗓️ سود ماهانه: {round(amount * 0.5, 2)} تتر → مجموع: {round(amount + amount * 0.5, 2)} تتر 💰"
         )
     },
     "en": {
@@ -24,12 +24,13 @@ messages = {
         "ask_amount": "Please enter the investment amount (e.g. 100 USDT):",
         "result": lambda amount: (
             f"💵 If you invest {amount} USDT:\n"
-            f"📆 Daily profit: {round(amount * 0.5 / 30, 2)} USDT\n"
-            f"📅 Weekly profit: {round(amount * 0.5 / 4, 2)} USDT\n"
-            f"🗓️ Monthly profit: {round(amount * 0.5, 2)} USDT 💰"
+            f"📆 Daily profit: {round(amount * 0.5 / 30, 2)} USDT → Total: {round(amount + amount * 0.5 / 30, 2)} USDT\n"
+            f"📅 Weekly profit: {round(amount * 0.5 / 4, 2)} USDT → Total: {round(amount + amount * 0.5 / 4, 2)} USDT\n"
+            f"🗓️ Monthly profit: {round(amount * 0.5, 2)} USDT → Total: {round(amount + amount * 0.5, 2)} USDT 💰"
         )
     }
 }
+
 
 user_lang = {}
 
