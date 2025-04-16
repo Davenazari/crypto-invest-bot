@@ -1,4 +1,4 @@
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 
 LANGUAGE, AMOUNT, DEPOSIT, TXID = range(4)
@@ -104,17 +104,35 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
-    txid = update.message.text
-    admin_id = 536587863  # ✅ آیدی ادمین
+    # بررسی اینکه آیا کاربر تصویر ارسال کرده یا خیر
+    if update.message.photo:
+        file = await update.message.photo[-1].get_file()  # گرفتن آخرین تصویر ارسال‌شده
+        txid = file.file_id  # شناسه فایل تصویر
+        # ارسال تصویر به ادمین
+        admin_id = 536587863  # آیدی ادمین
 
-    await context.bot.send_message(
-        admin_id,
-        f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
-        f"\nزبان: {lang}"
-        f"\nTXID یا اسکرین‌شات: {txid}"
-    )
+        await context.bot.send_message(
+            admin_id,
+            f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
+            f"\nزبان: {lang}"
+            f"\nارسال اسکرین‌شات"
+        )
+        await context.bot.send_photo(admin_id, file)
 
-    await update.message.reply_text("واریز شما ثبت شد. منتظر تأیید باشید.")
+        await update.message.reply_text("اسکرین‌شات شما ثبت شد. منتظر تأیید باشید.")
+    else:
+        txid = update.message.text
+        admin_id = 536587863  # آیدی ادمین
+
+        await context.bot.send_message(
+            admin_id,
+            f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
+            f"\nزبان: {lang}"
+            f"\nTXID: {txid}"
+        )
+
+        await update.message.reply_text("واریز شما ثبت شد. منتظر تأیید باشید.")
+
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -134,6 +152,7 @@ if __name__ == '__main__':
             DEPOSIT: [CallbackQueryHandler(handle_callback)],
             TXID: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid),
+                MessageHandler(filters.PHOTO, receive_txid),  # اضافه کردن امکان دریافت عکس
                 CallbackQueryHandler(handle_callback)
             ],
         },
