@@ -110,14 +110,19 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.photo:
         file = await update.message.photo[-1].get_file()  # گرفتن آخرین تصویر ارسال‌شده
         txid = file.file_id  # شناسه فایل تصویر
+        print(f"Received file ID: {file.file_id}")  # چاپ شناسه فایل
         # ارسال تصویر به ادمین
-        await context.bot.send_message(
-            admin_id,
-            f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
-            f"\nزبان: {lang}"
-            f"\nارسال اسکرین‌شات"
-        )
-        await context.bot.send_photo(admin_id, file)
+        try:
+            await context.bot.send_message(
+                admin_id,
+                f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
+                f"\nزبان: {lang}"
+                f"\nارسال اسکرین‌شات"
+            )
+            await context.bot.send_photo(admin_id, file)
+            print("Photo sent successfully")  # موفقیت در ارسال عکس
+        except Exception as e:
+            print(f"Error sending photo: {e}")  # چاپ خطا در صورت بروز
 
         # پیام برای کاربر
         await update.message.reply_text("اسکرین‌شات شما ثبت شد. منتظر تأیید باشید.")
@@ -127,7 +132,7 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             admin_id,
             f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
-            f"\nزبان: {lang}"
+            f"\nزبان: {lang} "
             f"\nTXID: {txid}"
         )
 
