@@ -1,5 +1,5 @@
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 
 LANGUAGE, AMOUNT = range(2)
 
@@ -17,7 +17,10 @@ messages = {
             f"📆 سود روزانه: {round(amount * 0.5 / 30, 2)} تتر → مجموع: {round(amount + amount * 0.5 / 30, 2)} تتر\n"
             f"📅 سود هفتگی: {round(amount * 0.5 / 4, 2)} تتر → مجموع: {round(amount + amount * 0.5 / 4, 2)} تتر\n"
             f"🗓️ سود ماهانه: {round(amount * 0.5, 2)} تتر → مجموع: {round(amount + amount * 0.5, 2)} تتر 💰"
-        )
+        ),
+        "deposit": "💸 واریز USDT",
+        "choose_network": "📲 لطفا شبکه مورد نظر را انتخاب کن:",
+        "wallet": lambda network, address: f"✅ آدرس کیف پول برای {network}:\n`{address}`"
     },
     "en": {
         "start": "Hello! Please choose your language:",
@@ -27,10 +30,17 @@ messages = {
             f"📆 Daily profit: {round(amount * 0.5 / 30, 2)} USDT → Total: {round(amount + amount * 0.5 / 30, 2)} USDT\n"
             f"📅 Weekly profit: {round(amount * 0.5 / 4, 2)} USDT → Total: {round(amount + amount * 0.5 / 4, 2)} USDT\n"
             f"🗓️ Monthly profit: {round(amount * 0.5, 2)} USDT → Total: {round(amount + amount * 0.5, 2)} USDT 💰"
-        )
+        ),
+        "deposit": "💸 Deposit USDT",
+        "choose_network": "📲 Please choose the network:",
+        "wallet": lambda network, address: f"✅ Wallet address for {network}:\n`{address}`"
     }
 }
 
+wallet_addresses = {
+    "TRC20": "TXExampleTRC20Wallet123",
+    "BEP20": "0xExampleBEP20Wallet456"
+}
 
 user_lang = {}
 
@@ -62,7 +72,30 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return AMOUNT
 
     await update.message.reply_text(messages[lang]["result"](amount))
+
+    deposit_button = [[InlineKeyboardButton(messages[lang]["deposit"], callback_data="deposit")]]
+    await update.message.reply_text("👇", reply_markup=InlineKeyboardMarkup(deposit_button))
+
     return ConversationHandler.END
+
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang = user_lang.get(query.from_user.id, "en")
+
+    if query.data == "deposit":
+        buttons = [
+            [InlineKeyboardButton("TRC20", callback_data="TRC20")],
+            [InlineKeyboardButton("BEP20", callback_data="BEP20")]
+        ]
+        await query.message.reply_text(messages[lang]["choose_network"], reply_markup=InlineKeyboardMarkup(buttons))
+
+    elif query.data in ["TRC20", "BEP20"]:
+        address = wallet_addresses[query.data]
+        await query.message.reply_text(
+            messages[lang]["wallet"](query.data, address),
+            parse_mode="Markdown"
+        )
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("لغو شد / Cancelled")
@@ -83,4 +116,5 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(handle_callback))
     app.run_polling()
