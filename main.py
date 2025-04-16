@@ -12,12 +12,22 @@ messages = {
     "fa": {
         "start": "سلام! زبان مورد نظر را انتخاب کن:",
         "ask_amount": "لطفا مقدار سرمایه‌گذاری را وارد کن (مثلا 100 تتر):",
-        "result": lambda amount: f"اگر {amount} تتر سرمایه‌گذاری کنی، سود ماهانه‌ات میشه {round(amount * 0.1, 2)} تتر 💰"
+        "result": lambda amount: (
+            f"💵 با سرمایه‌گذاری {amount} تتر:\n"
+            f"📆 سود روزانه: {round(amount * 0.5 / 30, 2)} تتر\n"
+            f"📅 سود هفتگی: {round(amount * 0.5 / 4, 2)} تتر\n"
+            f"🗓️ سود ماهانه: {round(amount * 0.5, 2)} تتر 💰"
+        )
     },
     "en": {
         "start": "Hello! Please choose your language:",
         "ask_amount": "Please enter the investment amount (e.g. 100 USDT):",
-        "result": lambda amount: f"If you invest {amount} USDT, your monthly profit will be {round(amount * 0.1, 2)} USDT 💰"
+        "result": lambda amount: (
+            f"💵 If you invest {amount} USDT:\n"
+            f"📆 Daily profit: {round(amount * 0.5 / 30, 2)} USDT\n"
+            f"📅 Weekly profit: {round(amount * 0.5 / 4, 2)} USDT\n"
+            f"🗓️ Monthly profit: {round(amount * 0.5, 2)} USDT 💰"
+        )
     }
 }
 
