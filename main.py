@@ -104,38 +104,36 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
-    
+    admin_id = 536587863  # آیدی ادمین
+
     # بررسی اینکه آیا کاربر تصویر ارسال کرده یا خیر
     if update.message.photo:
         file = await update.message.photo[-1].get_file()  # گرفتن آخرین تصویر ارسال‌شده
         txid = file.file_id  # شناسه فایل تصویر
         # ارسال تصویر به ادمین
-        admin_id = 536587863  # آیدی ادمین
-
         await context.bot.send_message(
             admin_id,
             f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
-            f"\nزبان: {lang} "
+            f"\nزبان: {lang}"
             f"\nارسال اسکرین‌شات"
         )
-        # ارسال اسکرین‌شات به ادمین
-        await context.bot.send_photo(admin_id, file.file_id)
+        await context.bot.send_photo(admin_id, file)
 
+        # پیام برای کاربر
         await update.message.reply_text("اسکرین‌شات شما ثبت شد. منتظر تأیید باشید.")
     else:
         txid = update.message.text
-        admin_id = 536587863  # آیدی ادمین
-
         # ارسال TXID به ادمین
         await context.bot.send_message(
             admin_id,
             f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
-            f"\nزبان: {lang} "
-            f"\nTXID: {txid}"  # متن TXID به ادمین ارسال می‌شود
+            f"\nزبان: {lang}"
+            f"\nTXID: {txid}"
         )
 
+        # پیام برای کاربر
         await update.message.reply_text("واریز شما ثبت شد. منتظر تأیید باشید.")
-
+    
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
