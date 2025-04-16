@@ -93,13 +93,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(messages[lang]["choose_network"], reply_markup=InlineKeyboardMarkup(buttons))
 
     elif query.data in ["TRC20", "BEP20"]:
-        address = wallet_addresses[query.data]
-        await query.message.reply_text(
-            messages[lang]["wallet"](query.data, address),
-            parse_mode="Markdown"
-        )
-
+    address = wallet_addresses[query.data]
+    await query.message.reply_text(
+        messages[lang]["wallet"](query.data, address),
+        parse_mode="Markdown"
+    )
+    # ✅ اضافه‌شده: درخواست TXID بعد از نمایش آدرس
+    await query.message.reply_text(messages[lang]["ask_txid"])
     return TXID
+
 
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
