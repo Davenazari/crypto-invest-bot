@@ -235,6 +235,7 @@ def init_db():
             )
         ''')
         conn.commit()
+        logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
         raise
@@ -243,77 +244,126 @@ def init_db():
             conn.close()
 
 def get_user(user_id):
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
-    user = c.fetchone()
-    conn.close()
-    return user
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
+        user = c.fetchone()
+        return user
+    except Exception as e:
+        logger.error(f"Error getting user {user_id}: {e}")
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
 
 def upsert_user(user_id, language='en', balance=0.0):
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO users (user_id, language, balance)
-        VALUES (%s, %s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET language = %s, balance = %s
-    ''', (user_id, language, balance, language, balance))
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO users (user_id, language, balance)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET language = %s, balance = %s
+        ''', (user_id, language, balance, language, balance))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error upserting user {user_id}: {e}")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
 
 def update_balance(user_id, amount):
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating balance for user {user_id}: {e}")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
 
 def insert_transaction(user_id, amount, network, status, message_id):
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    created_at = datetime.utcnow().isoformat()
-    c.execute('''
-        INSERT INTO transactions (user_id, amount, network, status, created_at, message_id)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    ''', (user_id, amount, network, status, created_at, message_id))
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        created_at = datetime.utcnow().isoformat()
+        c.execute('''
+            INSERT INTO transactions (user_id, amount, network, status, created_at, message_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (user_id, amount, network, status, created_at, message_id))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error inserting transaction for user {user_id}: {e}")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
 
 def update_transaction_status(transaction_id, user_id, message_id, status):
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    c.execute('''
-        UPDATE transactions
-        SET status = %s
-        WHERE user_id = %s AND message_id = %s AND status = 'pending'
-    ''', (status, user_id, message_id))
-    conn.commit()
-    conn.close()
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        c.execute('''
+            UPDATE transactions
+            SET status = %s
+            WHERE user_id = %s AND message_id = %s AND status = 'pending'
+        ''', (status, user_id, message_id))
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error updating transaction status for user {user_id}: {e}")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
 
 def get_transaction(user_id, message_id):
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    c.execute('''
-        SELECT amount, network, status
-        FROM transactions
-        WHERE user_id = %s AND message_id = %s AND status = 'pending'
-    ''', (user_id, message_id))
-    transaction = c.fetchone()
-    conn.close()
-    return transaction
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        c.execute('''
+            SELECT amount, network, status
+            FROM transactions
+            WHERE user_id = %s AND message_id = %s AND status = 'pending'
+        ''', (user_id, message_id))
+        transaction = c.fetchone()
+        return transaction
+    except Exception as e:
+        logger.error(f"Error getting transaction for user {user_id}: {e}")
+        return None
+    finally:
+        if conn is not None:
+            conn.close()
 
 def get_transaction_history(user_id):
-    conn = psycopg2.connect(DATABASE_URL)
-    c = conn.cursor()
-    c.execute('''
-        SELECT amount, network, status, created_at
-        FROM transactions
-        WHERE user_id = %s
-        ORDER BY created_at DESC
-    ''', (user_id,))
-    transactions = c.fetchall()
-    conn.close()
-    return transactions
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        c.execute('''
+            SELECT amount, network, status, created_at
+            FROM transactions
+            WHERE user_id = %s
+            ORDER BY created_at DESC
+        ''', (user_id,))
+        transactions = c.fetchall()
+        return transactions
+    except Exception as e:
+        logger.error(f"Error getting transaction history for user {user_id}: {e}")
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
 
 # مقداردهی اولیه دیتابیس
 try:
@@ -323,6 +373,15 @@ except Exception as e:
     exit(1)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} called /start")
+    
+    # پاک‌سازی داده‌های قبلی کاربر و پایان مکالمه فعلی
+    context.user_data.clear()
+    if context.user_data.get('_conversation_state'):
+        logger.info(f"Ending previous conversation for user {user_id}")
+        context.user_data['_conversation_state'] = None
+    
     kb = [[k] for k in langs.keys()]
     await update.message.reply_text(
         messages["fa" if update.effective_user.language_code == "fa" else "en"]["start"],
@@ -332,36 +391,49 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return LANGUAGE
 
 async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     lang_name = update.message.text
+    logger.info(f"User {user_id} selected language: {lang_name}")
+
     if lang_name not in langs:
+        logger.warning(f"Invalid language selected by user {user_id}: {lang_name}")
         await update.message.reply_text(
             messages["fa" if update.effective_user.language_code == "fa" else "en"]["invalid_language"],
             parse_mode="Markdown"
         )
         return LANGUAGE
 
-    lang = langs[lang_name]
-    user_id = update.effective_user.id
-    upsert_user(user_id, language=lang)
-    await update.message.reply_text(
-        messages[lang]["ask_amount"],
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_start")]
-        ])
-    )
-    return AMOUNT
+    try:
+        lang = langs[lang_name]
+        upsert_user(user_id, language=lang)
+        await update.message.reply_text(
+            messages[lang]["ask_amount"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_start")]
+            ])
+        )
+        return AMOUNT
+    except Exception as e:
+        logger.error(f"Error in set_language for user {user_id}: {e}")
+        await update.message.reply_text(
+            messages["fa" if update.effective_user.language_code == "fa" else "en"]["error"],
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
 
 async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
+    logger.info(f"User {user_id} entered amount: {update.message.text}")
 
     try:
         amount = float(update.message.text)
         if amount <= 0:
             raise ValueError("Amount must be positive")
     except ValueError:
+        logger.warning(f"Invalid amount entered by user {user_id}: {update.message.text}")
         await update.message.reply_text(
             messages[lang]["invalid_amount"],
             parse_mode="Markdown",
@@ -371,22 +443,30 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return AMOUNT
 
-    # ذخیره مقدار سرمایه‌گذاری
-    context.user_data["amount"] = amount
+    try:
+        # ذخیره مقدار سرمایه‌گذاری
+        context.user_data["amount"] = amount
 
-    await update.message.reply_text(
-        messages[lang]["result"](amount),
-        parse_mode="Markdown"
-    )
+        await update.message.reply_text(
+            messages[lang]["result"](amount),
+            parse_mode="Markdown"
+        )
 
-    deposit_button = [[InlineKeyboardButton(messages[lang]["deposit"], callback_data="deposit")]]
-    await update.message.reply_text(
-        "👇 *اقدام بعدی* 👇",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(deposit_button)
-    )
+        deposit_button = [[InlineKeyboardButton(messages[lang]["deposit"], callback_data="deposit")]]
+        await update.message.reply_text(
+            "👇 *اقدام بعدی* 👇",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(deposit_button)
+        )
 
-    return DEPOSIT
+        return DEPOSIT
+    except Exception as e:
+        logger.error(f"Error in get_amount for user {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -394,75 +474,84 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
+    logger.info(f"User {user_id} triggered callback: {query.data}")
 
-    if query.data == "back_to_start":
-        kb = [[k] for k in langs.keys()]
-        await query.message.reply_text(
-            messages[lang]["start"],
-            parse_mode="Markdown",
-            reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
-        )
-        return LANGUAGE
+    try:
+        if query.data == "back_to_start":
+            context.user_data.clear()
+            kb = [[k] for k in langs.keys()]
+            await query.message.reply_text(
+                messages[lang]["start"],
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardMarkup(kb, one_time_keyboard=True, resize_keyboard=True)
+            )
+            return LANGUAGE
 
-    if query.data == "deposit":
-        buttons = [
-            [InlineKeyboardButton("TRC20", callback_data="TRC20")],
-            [InlineKeyboardButton("BEP20", callback_data="BEP20")],
-            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_amount")]
-        ]
-        await query.message.reply_text(
-            messages[lang]["choose_network"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-        return DEPOSIT
+        if query.data == "deposit":
+            buttons = [
+                [InlineKeyboardButton("TRC20", callback_data="TRC20")],
+                [InlineKeyboardButton("BEP20", callback_data="BEP20")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_amount")]
+            ]
+            await query.message.reply_text(
+                messages[lang]["choose_network"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+            return DEPOSIT
 
-    elif query.data == "back_to_amount":
-        await query.message.reply_text(
-            messages[lang]["ask_amount"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_start")]
-            ])
-        )
-        return AMOUNT
+        elif query.data == "back_to_amount":
+            await query.message.reply_text(
+                messages[lang]["ask_amount"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_start")]
+                ])
+            )
+            return AMOUNT
 
-    elif query.data in ["TRC20", "BEP20"]:
-        address = wallet_addresses[query.data]
-        # ذخیره شبکه انتخاب‌شده
-        context.user_data["network"] = query.data
+        elif query.data in ["TRC20", "BEP20"]:
+            address = wallet_addresses[query.data]
+            # ذخیره شبکه انتخاب‌شده
+            context.user_data["network"] = query.data
+            await query.message.reply_text(
+                messages[lang]["wallet"](query.data, address),
+                parse_mode="Markdown"
+            )
+            await query.message.reply_text(
+                messages[lang]["ask_txid"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_deposit")]
+                ])
+            )
+            return TXID
+
+        elif query.data == "back_to_deposit":
+            buttons = [
+                [InlineKeyboardButton("TRC20", callback_data="TRC20")],
+                [InlineKeyboardButton("BEP20", callback_data="BEP20")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_amount")]
+            ]
+            await query.message.reply_text(
+                messages[lang]["choose_network"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+            return DEPOSIT
+    except Exception as e:
+        logger.error(f"Error in handle_callback for user {user_id}: {e}")
         await query.message.reply_text(
-            messages[lang]["wallet"](query.data, address),
+            messages[lang]["error"],
             parse_mode="Markdown"
         )
-        await query.message.reply_text(
-            messages[lang]["ask_txid"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_deposit")]
-            ])
-        )
-        return TXID
-
-    elif query.data == "back_to_deposit":
-        buttons = [
-            [InlineKeyboardButton("TRC20", callback_data="TRC20")],
-            [InlineKeyboardButton("BEP20", callback_data="BEP20")],
-            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_amount")]
-        ]
-        await query.message.reply_text(
-            messages[lang]["choose_network"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-        return DEPOSIT
+        return ConversationHandler.END
 
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     admin_id = int(os.getenv("ADMIN_ID", "536587863"))
-
-    logger.info(f"Received callback: {query.data} from user: {query.from_user.id}")
+    logger.info(f"Received admin callback: {query.data} from user: {query.from_user.id}")
 
     if query.data.startswith("confirm_") or query.data.startswith("reject_"):
         # فقط ادمین می‌تواند تأیید یا رد کند
@@ -666,6 +755,7 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user[0] if user else "en"
     admin_id = int(os.getenv("ADMIN_ID", "536587863"))
     message_id = update.message.message_id
+    logger.info(f"User {user_id} sent TXID or screenshot, message_id: {message_id}")
 
     try:
         # فوروارد کردن پیام کاربر به ادمین
@@ -710,22 +800,28 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
-        logger.error(f"Error forwarding message to admin: {e}")
+        logger.error(f"Error forwarding message to admin for user {user_id}: {e}")
         await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown"
         )
 
+    # پاک‌سازی داده‌های کاربر و پایان مکالمه
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
+    logger.info(f"User {user_id} cancelled conversation")
+
     await update.message.reply_text(
         messages[lang]["cancel"],
         parse_mode="Markdown"
     )
+    # پاک‌سازی داده‌های کاربر
+    context.user_data.clear()
     return ConversationHandler.END
 
 if __name__ == '__main__':
