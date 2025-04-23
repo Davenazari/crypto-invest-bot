@@ -64,7 +64,17 @@ messages = {
             "مشکلی در ثبت تراکنش پیش آمد.\n"
             "🔄 لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
         ),
-        "cancel": "🛑 *عملیات لغو شد*\nبرای شروع مجدد، دستور /start را وارد کنید."
+        "cancel": "🛑 *عملیات لغو شد*\nبرای شروع مجدد، دستور /start را وارد کنید.",
+        "confirmed": (
+            "✅ *تراکنش تأیید شد!*\n"
+            "واریز شما با موفقیت تأیید شد.\n"
+            "📈 سرمایه‌گذاری شما اکنون فعال است!"
+        ),
+        "rejected": (
+            "❌ *تراکنش رد شد!*\n"
+            "واریز شما تأیید نشد.\n"
+            "📩 لطفاً با پشتیبانی تماس بگیرید."
+        )
     },
     "en": {
         "start": (
@@ -115,7 +125,17 @@ messages = {
             "There was an issue processing your transaction.\n"
             "🔄 Please try again or contact support."
         ),
-        "cancel": "🛑 *Operation Cancelled*\nTo start over, use the /start command."
+        "cancel": "🛑 *Operation Cancelled*\nTo start over, use the /start command.",
+        "confirmed": (
+            "✅ *Transaction Confirmed!*\n"
+            "Your deposit has been successfully confirmed.\n"
+            "📈 Your investment is now active!"
+        ),
+        "rejected": (
+            "❌ *Transaction Rejected!*\n"
+            "Your deposit was not approved.\n"
+            "📩 Please contact support for more details."
+        )
     }
 }
 
@@ -125,6 +145,7 @@ wallet_addresses = {
 }
 
 user_lang = {}
+pending_transactions = {}  # دیکشنری برای ذخیره موقت تراکنش‌ها
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [[k] for k in langs.keys()]
@@ -170,6 +191,9 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
         return AMOUNT
+
+    # ذخیره مقدار سرمایه‌گذاری
+    context.user_data["amount"] = amount
 
     await update.message.reply_text(
         messages[lang]["result"](amount),
@@ -224,6 +248,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data in ["TRC20", "BEP20"]:
         address = wallet_addresses[query.data]
+        # ذخیره شبکه انتخاب‌شده
+        context.user_data["network"] = query.data
         await query.message.reply_text(
             messages[lang]["wallet"](query.data, address),
             parse_mode="Markdown"
@@ -250,27 +276,107 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return DEPOSIT
 
+    elif query.data.startswith("confirm_") or query.data.startswith("reject_"):
+        # فقط ادمین می‌تواند تأیید یا رد کند
+        admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+        if query.from_user.id != admin_id:
+            await query.message.reply_text(
+                "🚫 *خطا*: شما اجازه انجام این عملیات را ندارید!" if lang == "fa" else
+                "🚫 *Error*: You are not authorized to perform this action!",
+                parse_mode="Markdown"
+            )
+            return
+
+        action, user_id, message_id = query.data.split("_")
+        user_id = int(user_id)
+        message_id = int(message_id)
+
+        # بررسی وجود تراکنش
+        if (user_id, message_id) not in pending_transactions:
+            await query.message.reply_text(
+                "⚠️ *خطا*: این تراکنش دیگر معتبر نیست!" if lang == "fa" else
+                "⚠️ *Error*: This transaction is no longer valid!",
+                parse_mode="Markdown"
+            )
+            return
+
+        # دریافت اطلاعات تراکنش
+        transaction = pending_transactions.pop((user_id, message_id))
+        user_lang_id = transaction["lang"]
+        amount = transaction["amount"]
+        network = transaction["network"]
+
+        if action == "confirm":
+            # اطلاع‌رسانی به کاربر
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=messages[user_lang_id]["confirmed"],
+                parse_mode="Markdown"
+            )
+            # اطلاع‌رسانی به ادمین
+            await query.message.reply_text(
+                f"✅ *تراکنش تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
+                parse_mode="Markdown"
+            )
+        else:  # reject
+            # اطلاع‌رسانی به کاربر
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=messages[user_lang_id]["rejected"],
+                parse_mode="Markdown"
+            )
+            # اطلاع‌رسانی به ادمین
+            await query.message.reply_text(
+                f"❌ *تراکنش رد شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
+                parse_mode="Markdown"
+            )
+
+        return
+
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
     admin_id = int(os.getenv("ADMIN_ID", "536587863"))  # آیدی ادمین از متغیر محیطی
+    user_id = update.effective_user.id
+    message_id = update.message.message_id
 
     try:
         # فوروارد کردن پیام کاربر (متن، عکس یا هر نوع پیام دیگر) به ادمین
         await context.bot.forward_message(
             chat_id=admin_id,
             from_chat_id=update.effective_chat.id,
-            message_id=update.message.message_id
+            message_id=message_id
         )
 
-        # ارسال اطلاعات اضافی به ادمین
+        # ذخیره اطلاعات تراکنش
+        amount = context.user_data.get("amount", 0)
+        network = context.user_data.get("network", "Unknown")
+        pending_transactions[(user_id, message_id)] = {
+            "lang": lang,
+            "amount": amount,
+            "network": network
+        }
+
+        # ارسال اطلاعات اضافی و دکمه‌های تأیید/رد به ادمین
         await context.bot.send_message(
             chat_id=admin_id,
             text=(
-                f"📝 *کاربر*: {update.effective_user.first_name} ({update.effective_user.id})\n"
+                f"📝 *تراکنش جدید*\n"
+                f"────────────────────\n"
+                f"👤 *کاربر*: {update.effective_user.first_name} ({user_id})\n"
                 f"🌐 *زبان*: {lang}\n"
-                f"⏰ *زمان*: {update.message.date}"
+                f"💰 *مقدار*: {amount} تتر\n"
+                f"📲 *شبکه*: {network}\n"
+                f"⏰ *زمان*: {update.message.date}\n"
+                f"────────────────────\n"
+                f"✅ لطفاً وضعیت تراکنش را مشخص کنید:"
             ),
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ تأیید", callback_data=f"confirm_{user_id}_{message_id}"),
+                    InlineKeyboardButton("❌ رد", callback_data=f"reject_{user_id}_{message_id}")
+                ]
+            ])
         )
 
         # پاسخ به کاربر
