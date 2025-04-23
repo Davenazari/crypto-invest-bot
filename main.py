@@ -204,8 +204,12 @@ wallet_addresses = {
 
 # توابع مدیریت دیتابیس
 DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    logger.error("DATABASE_URL not found in environment variables")
+    exit(1)
 
 def init_db():
+    conn = None
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
@@ -235,7 +239,8 @@ def init_db():
         logger.error(f"Error initializing database: {e}")
         raise
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 def get_user(user_id):
     conn = psycopg2.connect(DATABASE_URL)
@@ -484,7 +489,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         # بررسی وجود تراکنش
-        transaction = gett_transaction(user_id, message_id)
+        transaction = get_transaction(user_id, message_id)
         if not transaction:
             await query.message.reply_text(
                 "⚠️ *خطا*: این تراکنش دیگر معتبر نیست!" if lang == "fa" else
@@ -582,6 +587,20 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ *Error*: An issue occurred while accessing the database!",
             parse_mode="Markdown"
         )
+
+async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+    lang = "en"
+    if user_id != admin_id:
+        await update.message.reply_text("🚫 Unauthorized", parse_mode="Markdown")
+        return
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        await update.message.reply_text("✅ Connection to PostgreSQL successful!")
+        conn.close()
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error connecting to database: {e}", parse_mode="Markdown")
 
 async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -736,6 +755,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("wallet", wallet))
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("debug", debug))
+    app.add_handler(CommandHandler("test_db", test_db))
     app.add_handler(conv)
 
     logger.info("🚀 Starting bot polling...")
