@@ -1,6 +1,6 @@
 import logging
 import os
-import sqlite3
+import psycopg2
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
@@ -203,100 +203,107 @@ wallet_addresses = {
 }
 
 # توابع مدیریت دیتابیس
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 def init_db():
-    conn = sqlite3.connect('bot.db')
-    c = conn.cursor()
-    # ایجاد جدول کاربران
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            language TEXT DEFAULT 'en',
-            balance REAL DEFAULT 0.0
-        )
-    ''')
-    # ایجاد جدول تراکنش‌ها
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            amount REAL,
-            network TEXT,
-            status TEXT,
-            created_at TEXT,
-            message_id INTEGER,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        # ایجاد جدول کاربران
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                language TEXT DEFAULT 'en',
+                balance REAL DEFAULT 0.0
+            )
+        ''')
+        # ایجاد جدول تراکنش‌ها
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                amount REAL,
+                network TEXT,
+                status TEXT,
+                created_at TEXT,
+                message_id BIGINT,
+                FOREIGN KEY (user_id) REFERENCES users (user_id)
+            )
+        ''')
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        raise
+    finally:
+        conn.close()
 
 def get_user(user_id):
-    conn = sqlite3.connect('bot.db')
+    conn = psycopg2.connect(DATABASE_URL)
     c = conn.cursor()
-    c.execute('SELECT language, balance FROM users WHERE user_id = ?', (user_id,))
+    c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
     user = c.fetchone()
     conn.close()
     return user
 
 def upsert_user(user_id, language='en', balance=0.0):
-    conn = sqlite3.connect('bot.db')
+    conn = psycopg2.connect(DATABASE_URL)
     c = conn.cursor()
     c.execute('''
         INSERT INTO users (user_id, language, balance)
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET language = ?, balance = ?
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET language = %s, balance = %s
     ''', (user_id, language, balance, language, balance))
     conn.commit()
     conn.close()
 
 def update_balance(user_id, amount):
-    conn = sqlite3.connect('bot.db')
+    conn = psycopg2.connect(DATABASE_URL)
     c = conn.cursor()
-    c.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id))
+    c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
     conn.commit()
     conn.close()
 
 def insert_transaction(user_id, amount, network, status, message_id):
-    conn = sqlite3.connect('bot.db')
+    conn = psycopg2.connect(DATABASE_URL)
     c = conn.cursor()
     created_at = datetime.utcnow().isoformat()
     c.execute('''
         INSERT INTO transactions (user_id, amount, network, status, created_at, message_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
     ''', (user_id, amount, network, status, created_at, message_id))
     conn.commit()
     conn.close()
 
 def update_transaction_status(transaction_id, user_id, message_id, status):
-    conn = sqlite3.connect('bot.db')
+    conn = psycopg2.connect(DATABASE_URL)
     c = conn.cursor()
     c.execute('''
         UPDATE transactions
-        SET status = ?
-        WHERE user_id = ? AND message_id = ? AND status = 'pending'
+        SET status = %s
+        WHERE user_id = %s AND message_id = %s AND status = 'pending'
     ''', (status, user_id, message_id))
     conn.commit()
     conn.close()
 
 def get_transaction(user_id, message_id):
-    conn = sqlite3.connect('bot.db')
+    conn = psycopg2.connect(DATABASE_URL)
     c = conn.cursor()
     c.execute('''
         SELECT amount, network, status
         FROM transactions
-        WHERE user_id = ? AND message_id = ? AND status = 'pending'
+        WHERE user_id = %s AND message_id = %s AND status = 'pending'
     ''', (user_id, message_id))
     transaction = c.fetchone()
     conn.close()
     return transaction
 
 def get_transaction_history(user_id):
-    conn = sqlite3.connect('bot.db')
+    conn = psycopg2.connect(DATABASE_URL)
     c = conn.cursor()
     c.execute('''
         SELECT amount, network, status, created_at
         FROM transactions
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY created_at DESC
     ''', (user_id,))
     transactions = c.fetchall()
@@ -304,7 +311,11 @@ def get_transaction_history(user_id):
     return transactions
 
 # مقداردهی اولیه دیتابیس
-init_db()
+try:
+    init_db()
+except Exception as e:
+    logger.error(f"Failed to initialize database: {e}")
+    exit(1)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [[k] for k in langs.keys()]
@@ -449,7 +460,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info(f"Received callback: {query.data} from user: {query.from_user.id}")
 
     if query.data.startswith("confirm_") or query.data.startswith("reject_"):
-        # فقط اد ^^ادمین می‌تواند تأیید یا رد کند
+        # فقط ادمین می‌تواند تأیید یا رد کند
         if query.from_user.id != admin_id:
             user = get_user(query.from_user.id)
             lang = user[0] if user else "en"
@@ -473,7 +484,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         # بررسی وجود تراکنش
-        transaction = get_transaction(user_id, message_id)
+        transaction = gett_transaction(user_id, message_id)
         if not transaction:
             await query.message.reply_text(
                 "⚠️ *خطا*: این تراکنش دیگر معتبر نیست!" if lang == "fa" else
@@ -544,7 +555,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        conn = sqlite3.connect('bot.db')
+        conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM users')
         user_count = c.fetchone()[0]
@@ -725,6 +736,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("wallet", wallet))
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("debug", debug))
+    app.add_handler(conv)
 
     logger.info("🚀 Starting bot polling...")
     app.run_polling()
