@@ -100,6 +100,10 @@ messages = {
             "📜 *بدون تاریخچه تراکنش*\n"
             "هنوز هیچ تراکنشی ثبت نشده است.\n"
             "📌 برای واریز، از /start استفاده کنید."
+        ),
+        "unauthorized": (
+            "🚫 *خطا*: شما اجازه دسترسی به این دستور را ندارید!\n"
+            "📩 لطفاً با ادمین تماس بگیرید."
         )
     },
     "en": {
@@ -185,6 +189,10 @@ messages = {
             "📜 *No Transaction History*\n"
             "No transactions have been recorded yet.\n"
             "📌 To deposit, use /start."
+        ),
+        "unauthorized": (
+            "🚫 *Error*: You are not authorized to access this command!\n"
+            "📩 Please contact the admin."
         )
     }
 }
@@ -441,12 +449,12 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info(f"Received callback: {query.data} from user: {query.from_user.id}")
 
     if query.data.startswith("confirm_") or query.data.startswith("reject_"):
-        # فقط ادمین می‌تواند تأیید یا رد کند
+        # فقط اد ^^ادمین می‌تواند تأیید یا رد کند
         if query.from_user.id != admin_id:
             user = get_user(query.from_user.id)
             lang = user[0] if user else "en"
             await query.message.reply_text(
-                messages[lang]["error"],
+                messages[lang]["unauthorized"],
                 parse_mode="Markdown"
             )
             return
@@ -520,6 +528,49 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "❌ *Error*: An issue occurred while processing the request!",
                 parse_mode="Markdown"
             )
+
+async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+
+    # بررسی دسترسی ادمین
+    if user_id != admin_id:
+        await update.message.reply_text(
+            messages[lang]["unauthorized"],
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        conn = sqlite3.connect('bot.db')
+        c = conn.cursor()
+        c.execute('SELECT COUNT(*) FROM users')
+        user_count = c.fetchone()[0]
+        c.execute('SELECT COUNT(*) FROM transactions')
+        transaction_count = c.fetchone()[0]
+        conn.close()
+        await update.message.reply_text(
+            f"🛠 *وضعیت دیتابیس*\n"
+            f"────────────────────\n"
+            f"👤 *تعداد کاربران*: {user_count}\n"
+            f"📝 *تعداد تراکنش‌ها*: {transaction_count}\n"
+            f"────────────────────" if lang == "fa" else
+            f"🛠 *Database Status*\n"
+            f"────────────────────\n"
+            f"👤 *Number of Users*: {user_count}\n"
+            f"📝 *Number of Transactions*: {transaction_count}\n"
+            f"────────────────────",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Error accessing database: {e}")
+        await update.message.reply_text(
+            "❌ *خطا*: مشکلی در دسترسی به دیتابیس رخ داد!" if lang == "fa" else
+            "❌ *Error*: An issue occurred while accessing the database!",
+            parse_mode="Markdown"
+        )
 
 async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -673,7 +724,7 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
     app.add_handler(CommandHandler("wallet", wallet))
     app.add_handler(CommandHandler("history", history))
-    app.add_handler(conv)
+    app.add_handler(CommandHandler("debug", debug))
 
     logger.info("🚀 Starting bot polling...")
     app.run_polling()
