@@ -74,6 +74,18 @@ messages = {
             "❌ *تراکنش رد شد!*\n"
             "واریز شما تأیید نشد.\n"
             "📩 لطفاً با پشتیبانی تماس بگیرید."
+        ),
+        "wallet_balance": lambda balance: (
+            f"💼 *موجودی کیف پول شما*\n"
+            f"────────────────────\n"
+            f"💰 *مقدار*: `{balance}` تتر\n"
+            f"────────────────────\n"
+            f"📌 برای افزایش موجودی، از /start استفاده کنید."
+        ),
+        "wallet_empty": (
+            "💼 *کیف پول خالی است!*\n"
+            "هنوز هیچ واریزی تأیید نشده است.\n"
+            "📌 برای واریز، از /start استفاده کنید."
         )
     },
     "en": {
@@ -135,6 +147,18 @@ messages = {
             "❌ *Transaction Rejected!*\n"
             "Your deposit was not approved.\n"
             "📩 Please contact support for more details."
+        ),
+        "wallet_balance": lambda balance: (
+            f"💼 *Your Wallet Balance*\n"
+            f"────────────────────\n"
+            f"💰 *Amount*: `{balance}` USDT\n"
+            f"────────────────────\n"
+            f"📌 To increase your balance, use /start."
+        ),
+        "wallet_empty": (
+            "💼 *Wallet is Empty!*\n"
+            "No deposits have been confirmed yet.\n"
+            "📌 To deposit, use /start."
         )
     }
 }
@@ -146,6 +170,7 @@ wallet_addresses = {
 
 user_lang = {}
 pending_transactions = {}  # دیکشنری برای ذخیره موقت تراکنش‌ها
+user_wallets = {}  # دیکشنری برای ذخیره موجودی کیف پول کاربران
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [[k] for k in langs.keys()]
@@ -324,6 +349,8 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         try:
             if action == "confirm":
+                # اضافه کردن مقدار به کیف پول کاربر
+                user_wallets[user_id] = user_wallets.get(user_id, 0) + amount
                 # اطلاع‌رسانی به کاربر
                 await context.bot.send_message(
                     chat_id=user_id,
@@ -332,7 +359,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 # اطلاع‌رسانی به ادمین
                 await query.message.reply_text(
-                    f"✅ *تراکنش تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
+                    f"✅ *تراکنش تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}\nموجودی جدید: {user_wallets[user_id]} تتر",
                     parse_mode="Markdown"
                 )
             else:  # reject
@@ -354,6 +381,23 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 "❌ *Error*: An issue occurred while processing the request!",
                 parse_mode="Markdown"
             )
+
+async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    lang = user_lang.get(user_id, "en")
+
+    # بررسی موجودی کیف پول
+    balance = user_wallets.get(user_id, 0)
+    if balance == 0:
+        await update.message.reply_text(
+            messages[lang]["wallet_empty"],
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            messages[lang]["wallet_balance"](balance),
+            parse_mode="Markdown"
+        )
 
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
@@ -448,6 +492,8 @@ if __name__ == '__main__':
 
     # اضافه کردن Handler جداگانه برای دکمه‌های تأیید و رد
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
+    # اضافه کردن Handler برای دستور /wallet
+    app.add_handler(CommandHandler("wallet", wallet))
 
     app.add_handler(conv)
     logger.info("🚀 Starting bot polling...")
