@@ -276,9 +276,16 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return DEPOSIT
 
-    elif query.data.startswith("confirm_") or query.data.startswith("reject_"):
+async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    lang = user_lang.get(query.from_user.id, "en") or "en"
+    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+
+    logger.info(f"Received callback: {query.data} from user: {query.from_user.id}")
+
+    if query.data.startswith("confirm_") or query.data.startswith("reject_"):
         # فقط ادمین می‌تواند تأیید یا رد کند
-        admin_id = int(os.getenv("ADMIN_ID", "536587863"))
         if query.from_user.id != admin_id:
             await query.message.reply_text(
                 "🚫 *خطا*: شما اجازه انجام این عملیات را ندارید!" if lang == "fa" else
@@ -287,9 +294,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        action, user_id, message_id = query.data.split("_")
-        user_id = int(user_id)
-        message_id = int(message_id)
+        try:
+            action, user_id, message_id = query.data.split("_")
+            user_id = int(user_id)
+            message_id = int(message_id)
+        except ValueError as e:
+            logger.error(f"Error parsing callback_data: {query.data}, error: {e}")
+            await query.message.reply_text(
+                "⚠️ *خطا*: فرمت داده نامعتبر است!" if lang == "fa" else
+                "⚠️ *Error*: Invalid data format!",
+                parse_mode="Markdown"
+            )
+            return
 
         # بررسی وجود تراکنش
         if (user_id, message_id) not in pending_transactions:
@@ -306,32 +322,38 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         amount = transaction["amount"]
         network = transaction["network"]
 
-        if action == "confirm":
-            # اطلاع‌رسانی به کاربر
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=messages[user_lang_id]["confirmed"],
-                parse_mode="Markdown"
-            )
-            # اطلاع‌رسانی به ادمین
+        try:
+            if action == "confirm":
+                # اطلاع‌رسانی به کاربر
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=messages[user_lang_id]["confirmed"],
+                    parse_mode="Markdown"
+                )
+                # اطلاع‌رسانی به ادمین
+                await query.message.reply_text(
+                    f"✅ *تراکنش تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
+                    parse_mode="Markdown"
+                )
+            else:  # reject
+                # اطلاع‌رسانی به کاربر
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=messages[user_lang_id]["rejected"],
+                    parse_mode="Markdown"
+                )
+                # اطلاع‌رسانی به ادمین
+                await query.message.reply_text(
+                    f"❌ *تراکنش رد شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
+                    parse_mode="Markdown"
+                )
+        except Exception as e:
+            logger.error(f"Error sending message: {e}")
             await query.message.reply_text(
-                f"✅ *تراکنش تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
+                "❌ *خطا*: مشکلی در پردازش درخواست رخ داد!" if lang == "fa" else
+                "❌ *Error*: An issue occurred while processing the request!",
                 parse_mode="Markdown"
             )
-        else:  # reject
-            # اطلاع‌رسانی به کاربر
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=messages[user_lang_id]["rejected"],
-                parse_mode="Markdown"
-            )
-            # اطلاع‌رسانی به ادمین
-            await query.message.reply_text(
-                f"❌ *تراکنش رد شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
-                parse_mode="Markdown"
-            )
-
-        return
 
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
@@ -341,7 +363,7 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # فوروارد کردن پیام کاربر (متن، عکس یا هر نوع پیام دیگر) به ادمین
-        await context.bot.forward_message(
+        forwarded_message = await context.bot.forward_message(
             chat_id=admin_id,
             from_chat_id=update.effective_chat.id,
             message_id=message_id
@@ -423,6 +445,9 @@ if __name__ == '__main__':
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
+
+    # اضافه کردن Handler جداگانه برای دکمه‌های تأیید و رد
+    app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
 
     app.add_handler(conv)
     logger.info("🚀 Starting bot polling...")
