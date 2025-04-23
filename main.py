@@ -1,5 +1,7 @@
 import logging
 import os
+import sqlite3
+from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 
@@ -86,6 +88,18 @@ messages = {
             "💼 *کیف پول خالی است!*\n"
             "هنوز هیچ واریزی تأیید نشده است.\n"
             "📌 برای واریز، از /start استفاده کنید."
+        ),
+        "history": lambda transactions: (
+            f"📜 *تاریخچه تراکنش‌ها*\n"
+            f"────────────────────\n"
+            f"{transactions}\n"
+            f"────────────────────\n"
+            f"📌 برای واریز جدید، از /start استفاده کنید."
+        ),
+        "no_history": (
+            "📜 *بدون تاریخچه تراکنش*\n"
+            "هنوز هیچ تراکنشی ثبت نشده است.\n"
+            "📌 برای واریز، از /start استفاده کنید."
         )
     },
     "en": {
@@ -159,6 +173,18 @@ messages = {
             "💼 *Wallet is Empty!*\n"
             "No deposits have been confirmed yet.\n"
             "📌 To deposit, use /start."
+        ),
+        "history": lambda transactions: (
+            f"📜 *Transaction History*\n"
+            f"────────────────────\n"
+            f"{transactions}\n"
+            f"────────────────────\n"
+            f"📌 For a new deposit, use /start."
+        ),
+        "no_history": (
+            "📜 *No Transaction History*\n"
+            "No transactions have been recorded yet.\n"
+            "📌 To deposit, use /start."
         )
     }
 }
@@ -168,9 +194,109 @@ wallet_addresses = {
     "BEP20": "0xExampleBEP20Wallet456"
 }
 
-user_lang = {}
-pending_transactions = {}  # دیکشنری برای ذخیره موقت تراکنش‌ها
-user_wallets = {}  # دیکشنری برای ذخیره موجودی کیف پول کاربران
+# توابع مدیریت دیتابیس
+def init_db():
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    # ایجاد جدول کاربران
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            language TEXT DEFAULT 'en',
+            balance REAL DEFAULT 0.0
+        )
+    ''')
+    # ایجاد جدول تراکنش‌ها
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount REAL,
+            network TEXT,
+            status TEXT,
+            created_at TEXT,
+            message_id INTEGER,
+            FOREIGN KEY (user_id) REFERENCES users (user_id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_user(user_id):
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    c.execute('SELECT language, balance FROM users WHERE user_id = ?', (user_id,))
+    user = c.fetchone()
+    conn.close()
+    return user
+
+def upsert_user(user_id, language='en', balance=0.0):
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO users (user_id, language, balance)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET language = ?, balance = ?
+    ''', (user_id, language, balance, language, balance))
+    conn.commit()
+    conn.close()
+
+def update_balance(user_id, amount):
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    c.execute('UPDATE users SET balance = balance + ? WHERE user_id = ?', (amount, user_id))
+    conn.commit()
+    conn.close()
+
+def insert_transaction(user_id, amount, network, status, message_id):
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    created_at = datetime.utcnow().isoformat()
+    c.execute('''
+        INSERT INTO transactions (user_id, amount, network, status, created_at, message_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (user_id, amount, network, status, created_at, message_id))
+    conn.commit()
+    conn.close()
+
+def update_transaction_status(transaction_id, user_id, message_id, status):
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    c.execute('''
+        UPDATE transactions
+        SET status = ?
+        WHERE user_id = ? AND message_id = ? AND status = 'pending'
+    ''', (status, user_id, message_id))
+    conn.commit()
+    conn.close()
+
+def get_transaction(user_id, message_id):
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    c.execute('''
+        SELECT amount, network, status
+        FROM transactions
+        WHERE user_id = ? AND message_id = ? AND status = 'pending'
+    ''', (user_id, message_id))
+    transaction = c.fetchone()
+    conn.close()
+    return transaction
+
+def get_transaction_history(user_id):
+    conn = sqlite3.connect('bot.db')
+    c = conn.cursor()
+    c.execute('''
+        SELECT amount, network, status, created_at
+        FROM transactions
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    ''', (user_id,))
+    transactions = c.fetchall()
+    conn.close()
+    return transactions
+
+# مقداردهی اولیه دیتابیس
+init_db()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [[k] for k in langs.keys()]
@@ -191,7 +317,8 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return LANGUAGE
 
     lang = langs[lang_name]
-    user_lang[update.effective_user.id] = lang
+    user_id = update.effective_user.id
+    upsert_user(user_id, language=lang)
     await update.message.reply_text(
         messages[lang]["ask_amount"],
         parse_mode="Markdown",
@@ -202,7 +329,10 @@ async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return AMOUNT
 
 async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = user_lang.get(update.effective_user.id, "en")
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+
     try:
         amount = float(update.message.text)
         if amount <= 0:
@@ -237,7 +367,9 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    lang = user_lang.get(query.from_user.id, "en")
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
 
     if query.data == "back_to_start":
         kb = [[k] for k in langs.keys()]
@@ -304,7 +436,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    lang = user_lang.get(query.from_user.id, "en") or "en"
     admin_id = int(os.getenv("ADMIN_ID", "536587863"))
 
     logger.info(f"Received callback: {query.data} from user: {query.from_user.id}")
@@ -312,9 +443,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("confirm_") or query.data.startswith("reject_"):
         # فقط ادمین می‌تواند تأیید یا رد کند
         if query.from_user.id != admin_id:
+            user = get_user(query.from_user.id)
+            lang = user[0] if user else "en"
             await query.message.reply_text(
-                "🚫 *خطا*: شما اجازه انجام این عملیات را ندارید!" if lang == "fa" else
-                "🚫 *Error*: You are not authorized to perform this action!",
+                messages[lang]["error"],
                 parse_mode="Markdown"
             )
             return
@@ -333,7 +465,8 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         # بررسی وجود تراکنش
-        if (user_id, message_id) not in pending_transactions:
+        transaction = get_transaction(user_id, message_id)
+        if not transaction:
             await query.message.reply_text(
                 "⚠️ *خطا*: این تراکنش دیگر معتبر نیست!" if lang == "fa" else
                 "⚠️ *Error*: This transaction is no longer valid!",
@@ -342,15 +475,19 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         # دریافت اطلاعات تراکنش
-        transaction = pending_transactions.pop((user_id, message_id))
-        user_lang_id = transaction["lang"]
-        amount = transaction["amount"]
-        network = transaction["network"]
+        amount, network, status = transaction
+        user = get_user(user_id)
+        user_lang_id = user[0] if user else "en"
 
         try:
             if action == "confirm":
-                # اضافه کردن مقدار به کیف پول کاربر
-                user_wallets[user_id] = user_wallets.get(user_id, 0) + amount
+                # به‌روزرسانی موجودی کاربر
+                update_balance(user_id, amount)
+                # به‌روزرسانی وضعیت تراکنش
+                update_transaction_status(None, user_id, message_id, "confirmed")
+                # دریافت موجودی جدید
+                user = get_user(user_id)
+                balance = user[1] if user else 0
                 # اطلاع‌رسانی به کاربر
                 await context.bot.send_message(
                     chat_id=user_id,
@@ -359,10 +496,12 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 # اطلاع‌رسانی به ادمین
                 await query.message.reply_text(
-                    f"✅ *تراکنش تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}\nموجودی جدید: {user_wallets[user_id]} تتر",
+                    f"✅ *تراکنش تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}\nموجودی جدید: {balance} تتر",
                     parse_mode="Markdown"
                 )
             else:  # reject
+                # به‌روزرسانی وضعیت تراکنش
+                update_transaction_status(None, user_id, message_id, "rejected")
                 # اطلاع‌رسانی به کاربر
                 await context.bot.send_message(
                     chat_id=user_id,
@@ -384,10 +523,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    lang = user_lang.get(user_id, "en")
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    balance = user[1] if user else 0
 
-    # بررسی موجودی کیف پول
-    balance = user_wallets.get(user_id, 0)
     if balance == 0:
         await update.message.reply_text(
             messages[lang]["wallet_empty"],
@@ -399,15 +538,57 @@ async def wallet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = user_lang.get(update.effective_user.id, "en")
-    admin_id = int(os.getenv("ADMIN_ID", "536587863"))  # آیدی ادمین از متغیر محیطی
+async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+
+    transactions = get_transaction_history(user_id)
+    if not transactions:
+        await update.message.reply_text(
+            messages[lang]["no_history"],
+            parse_mode="Markdown"
+        )
+        return
+
+    # فرمت‌بندی تاریخچه تراکنش‌ها
+    transaction_text = ""
+    status_map = {
+        "pending": ("⏳ در انتظار", "⏳ Pending"),
+        "confirmed": ("✅ تأییدشده", "✅ Confirmed"),
+        "rejected": ("❌ ردشده", "❌ Rejected")
+    }
+    for amount, network, status, created_at in transactions:
+        status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
+        transaction_text += (
+            f"💰 *مقدار*: `{amount}` تتر\n"
+            f"📲 *شبکه*: {network}\n"
+            f"📅 *وضعیت*: {status_text}\n"
+            f"⏰ *زمان*: {created_at}\n"
+            f"────────────────────\n"
+        ) if lang == "fa" else (
+            f"💰 *Amount*: `{amount}` USDT\n"
+            f"📲 *Network*: {network}\n"
+            f"📅 *Status*: {status_text}\n"
+            f"⏰ *Time*: {created_at}\n"
+            f"────────────────────\n"
+        )
+
+    await update.message.reply_text(
+        messages[lang]["history"](transaction_text),
+        parse_mode="Markdown"
+    )
+
+async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
     message_id = update.message.message_id
 
     try:
-        # فوروارد کردن پیام کاربر (متن، عکس یا هر نوع پیام دیگر) به ادمین
-        forwarded_message = await context.bot.forward_message(
+        # فوروارد کردن پیام کاربر به ادمین
+        await context.bot.forward_message(
             chat_id=admin_id,
             from_chat_id=update.effective_chat.id,
             message_id=message_id
@@ -416,11 +597,7 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # ذخیره اطلاعات تراکنش
         amount = context.user_data.get("amount", 0)
         network = context.user_data.get("network", "Unknown")
-        pending_transactions[(user_id, message_id)] = {
-            "lang": lang,
-            "amount": amount,
-            "network": network
-        }
+        insert_transaction(user_id, amount, network, "pending", message_id)
 
         # ارسال اطلاعات اضافی و دکمه‌های تأیید/رد به ادمین
         await context.bot.send_message(
@@ -461,7 +638,9 @@ async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = user_lang.get(update.effective_user.id, "en") or "en"
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
     await update.message.reply_text(
         messages[lang]["cancel"],
         parse_mode="Markdown"
@@ -490,11 +669,11 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
-    # اضافه کردن Handler جداگانه برای دکمه‌های تأیید و رد
+    # اضافه کردن Handler‌ها
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
-    # اضافه کردن Handler برای دستور /wallet
     app.add_handler(CommandHandler("wallet", wallet))
-
+    app.add_handler(CommandHandler("history", history))
     app.add_handler(conv)
+
     logger.info("🚀 Starting bot polling...")
     app.run_polling()
