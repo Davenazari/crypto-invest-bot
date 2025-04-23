@@ -1,5 +1,11 @@
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+import logging
+import os
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
+
+# تنظیم لاگ‌گیری
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 LANGUAGE, AMOUNT, DEPOSIT, TXID = range(4)
 
@@ -104,41 +110,37 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def receive_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user_lang.get(update.effective_user.id, "en")
-    admin_id = 536587863  # آیدی ادمین
+    admin_id = int(os.getenv("ADMIN_ID", "536587863"))  # آیدی ادمین از متغیر محیطی
 
-    # بررسی اینکه آیا کاربر تصویر ارسال کرده یا خیر
-    if update.message.photo:
-        file = await update.message.photo[-1].get_file()  # گرفتن آخرین تصویر ارسال‌شده
-        txid = file.file_id  # شناسه فایل تصویر
-        print(f"Received file ID: {file.file_id}")  # چاپ شناسه فایل
-        # ارسال تصویر به ادمین
-        try:
-            await context.bot.send_message(
-                admin_id,
-                f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
-                f"\nزبان: {lang}"
-                f"\nارسال اسکرین‌شات"
-            )
-            await context.bot.send_photo(admin_id, file)
-            print("Photo sent successfully")  # موفقیت در ارسال عکس
-        except Exception as e:
-            print(f"Error sending photo: {e}")  # چاپ خطا در صورت بروز
-
-        # پیام برای کاربر
-        await update.message.reply_text("اسکرین‌شات شما ثبت شد. منتظر تأیید باشید.")
-    else:
-        txid = update.message.text
-        # ارسال TXID به ادمین
-        await context.bot.send_message(
-            admin_id,
-            f"📝 کاربر {update.effective_user.first_name} ({update.effective_user.id})"
-            f"\nزبان: {lang} "
-            f"\nTXID: {txid}"
+    try:
+        # فوروارد کردن پیام کاربر (متن، عکس یا هر نوع پیام دیگر) به ادمین
+        await context.bot.forward_message(
+            chat_id=admin_id,
+            from_chat_id=update.effective_chat.id,
+            message_id=update.message.message_id
         )
 
-        # پیام برای کاربر
-        await update.message.reply_text("واریز شما ثبت شد. منتظر تأیید باشید.")
-    
+        # ارسال اطلاعات اضافی به ادمین
+        await context.bot.send_message(
+            chat_id=admin_id,
+            text=(
+                f"📝 کاربر: {update.effective_user.first_name} ({update.effective_user.id})\n"
+                f"زبان: {lang}"
+            )
+        )
+
+        # پاسخ به کاربر
+        await update.message.reply_text(
+            "واریز شما ثبت شد. منتظر تأیید باشید." if lang == "fa" else "Your deposit has been recorded. Please wait for confirmation."
+        )
+
+    except Exception as e:
+        logger.error(f"Error forwarding message to admin: {e}")
+        await update.message.reply_text(
+            "خطایی رخ داد. لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید." if lang == "fa" else 
+            "An error occurred. Please try again or contact support."
+        )
+
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -146,8 +148,11 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 if __name__ == '__main__':
-    import os
     TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        logger.error("BOT_TOKEN not found in environment variables")
+        exit(1)
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv = ConversationHandler(
@@ -157,8 +162,7 @@ if __name__ == '__main__':
             AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)],
             DEPOSIT: [CallbackQueryHandler(handle_callback)],
             TXID: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_txid),
-                MessageHandler(filters.PHOTO, receive_txid),  # اضافه کردن امکان دریافت عکس
+                MessageHandler(filters.ALL & ~filters.COMMAND, receive_txid),  # پردازش همه پیام‌ها به جز دستورات
                 CallbackQueryHandler(handle_callback)
             ],
         },
@@ -166,4 +170,5 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv)
+    logger.info("Starting bot polling...")
     app.run_polling()
