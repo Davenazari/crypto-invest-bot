@@ -122,7 +122,8 @@ messages = {
             f"────────────────────\n"
             f"📆 *Daily Profit*: `{round(amount * 0.5 / 30, 2)}` USDT → *Total*: `{round(amount + amount * 0.5 / 30, 2)}` USDT\n"
             f"📅 *Weekly Profit*: `{round(amount * 0.5 / 4, 2)}` USDT → *Total*: `{round(amount + amount * 0.5 / 4, 2)}` USDT\n"
-            f"🗓️ *Monthly Profit*: `{round(amount * 0.5, 2)}` USDT → *Total*: `{round(amount + amount * 0.5, 2)}` USDT\n"
+            f"🗓️ *Monthly Profit*: `{round(amount * 0.5, 2)}` USDT → *释
+            Total*: `{round(amount + amount * 0.5, 2)}` USDT\n"
             f"────────────────────\n"
             f"💸 Ready to deposit?"
         ),
@@ -258,17 +259,20 @@ def get_user(user_id):
         if conn is not None:
             conn.close()
 
-def upsert_user(user_id, language='en', balance=0.0):
+def upsert_user(user_id, language='en'):
     conn = None
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
+        # اگر کاربر وجود نداشته باشد، با balance=0.0 اضافه می‌شود
+        # اگر وجود داشته باشد، فقط language به‌روزرسانی می‌شود
         c.execute('''
             INSERT INTO users (user_id, language, balance)
             VALUES (%s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET language = %s, balance = %s
-        ''', (user_id, language, balance, language, balance))
+            ON CONFLICT (user_id) DO UPDATE SET language = %s
+        ''', (user_id, language, 0.0, language))
         conn.commit()
+        logger.info(f"Upserted user {user_id} with language {language}")
     except Exception as e:
         logger.error(f"Error upserting user {user_id}: {e}")
         raise
@@ -283,6 +287,7 @@ def update_balance(user_id, amount):
         c = conn.cursor()
         c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
         conn.commit()
+        logger.info(f"Updated balance for user {user_id}: added {amount}")
     except Exception as e:
         logger.error(f"Error updating balance for user {user_id}: {e}")
         raise
@@ -301,6 +306,7 @@ def insert_transaction(user_id, amount, network, status, message_id):
             VALUES (%s, %s, %s, %s, %s, %s)
         ''', (user_id, amount, network, status, created_at, message_id))
         conn.commit()
+        logger.info(f"Inserted transaction for user {user_id}: amount {amount}, network {network}, status {status}")
     except Exception as e:
         logger.error(f"Error inserting transaction for user {user_id}: {e}")
         raise
@@ -319,6 +325,7 @@ def update_transaction_status(transaction_id, user_id, message_id, status):
             WHERE user_id = %s AND message_id = %s AND status = 'pending'
         ''', (status, user_id, message_id))
         conn.commit()
+        logger.info(f"Updated transaction status for user {user_id}, message_id {message_id} to {status}")
     except Exception as e:
         logger.error(f"Error updating transaction status for user {user_id}: {e}")
         raise
@@ -357,6 +364,7 @@ def get_transaction_history(user_id):
             ORDER BY created_at DESC
         ''', (user_id,))
         transactions = c.fetchall()
+        logger.info(f"Retrieved {len(transactions)} transactions for user {user_id}")
         return transactions
     except Exception as e:
         logger.error(f"Error getting transaction history for user {user_id}: {e}")
