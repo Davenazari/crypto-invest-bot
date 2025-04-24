@@ -150,6 +150,11 @@ messages = {
         "unauthorized": (
             "🚫 *خطا*: شما اجازه دسترسی به این دستور را ندارید!\n"
             "📩 لطفاً با پشتیبانی تماس بگیرید."
+        ),
+        "unexpected_message": (
+            "⚠️ *پیام نامعتبر*\n"
+            "لطفاً از دکمه‌های منو استفاده کنید یا مقدار معتبری وارد کنید.\n"
+            "برای بازگشت به منوی اصلی، /start را وارد کنید."
         )
     },
     "en": {
@@ -284,6 +289,11 @@ messages = {
         "unauthorized": (
             "🚫 *Error*: You are not authorized to access this command!\n"
             "📩 Please contact support."
+        ),
+        "unexpected_message": (
+            "⚠️ *Invalid Message*\n"
+            "Please use the menu buttons or enter a valid amount.\n"
+            "To return to the main menu, use /start."
         )
     }
 }
@@ -304,7 +314,6 @@ def init_db():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        # ایجاد جدول کاربران
         c.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -312,7 +321,6 @@ def init_db():
                 balance REAL DEFAULT 0.0
             )
         ''')
-        # ایجاد جدول تراکنش‌ها با ستون جدید type
         c.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 id SERIAL PRIMARY KEY,
@@ -513,6 +521,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         if query.data == "deposit":
+            context.user_data["conversation_state"] = DEPOSIT_AMOUNT
             await query.message.reply_text(
                 messages[lang]["ask_amount"],
                 parse_mode="Markdown",
@@ -551,6 +560,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
 
         elif query.data == "withdraw":
+            context.user_data["conversation_state"] = WITHDRAW_AMOUNT
             await query.message.reply_text(
                 messages[lang]["ask_withdraw_amount"],
                 parse_mode="Markdown",
@@ -643,6 +653,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
 
         elif query.data == "back_to_menu":
+            context.user_data.clear()
             await query.message.reply_text(
                 messages[lang]["main_menu"],
                 parse_mode="Markdown",
@@ -663,14 +674,15 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"User {user_id} entered deposit amount: {update.message.text}")
+    text = update.message.text
+    logger.info(f"User {user_id} entered deposit amount: {text}")
 
     try:
-        amount = float(update.message.text)
+        amount = float(text)
         if amount <= 0:
             raise ValueError("Amount must be positive")
     except ValueError:
-        logger.warning(f"Invalid deposit amount entered by user {user_id}: {update.message.text}")
+        logger.warning(f"Invalid deposit amount entered by user {user_id}: {text}")
         await update.message.reply_text(
             messages[lang]["invalid_amount"],
             parse_mode="Markdown",
@@ -732,6 +744,7 @@ async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_T
             )
             return DEPOSIT_TXID
         elif query.data == "back_to_menu":
+            context.user_data.clear()
             await query.message.reply_text(
                 messages[lang]["main_menu"],
                 parse_mode="Markdown",
@@ -807,16 +820,17 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = get_user(user_id)
     lang = user[0] if user else "en"
     balance = user[1] if user else 0
-    logger.info(f"User {user_id} entered withdraw amount: {update.message.text}")
+    text = update.message.text
+    logger.info(f"User {user_id} entered withdraw amount: {text}")
 
     try:
-        amount = float(update.message.text)
+        amount = float(text)
         if amount <= 0:
             raise ValueError("Amount must be positive")
         if amount > balance:
             raise ValueError("Insufficient balance")
     except ValueError as e:
-        logger.warning(f"Invalid withdraw amount entered by user {user_id}: {update.message.text}")
+        logger.warning(f"Invalid withdraw amount entered by user {user_id}: {text}")
         error_message = messages[lang]["insufficient_balance"] if str(e) == "Insufficient balance" else messages[lang]["invalid_amount"]
         await update.message.reply_text(
             error_message,
@@ -924,7 +938,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         except ValueError as e:
             logger.error(f"Error parsing callback_data: {query.data}, error: {e}")
             await query.message.reply_text(
-                "⚠️ *خطا*: فرمت داده نامعتبر است!" if lang == "fa" else "⚠️ *Error*: Invalid data format!",
+                messages["fa"]["error"] if lang == "fa" else messages["en"]["error"],
                 parse_mode="Markdown"
             )
             return
@@ -932,7 +946,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         transaction = get_transaction(user_id, message_id)
         if not transaction:
             await query.message.reply_text(
-                "⚠️ *خطا*: این تراکنش دیگر معتبر نیست!" if lang == "fa" else "⚠️ *Error*: This transaction is no longer valid!",
+                messages["fa"]["error"] if lang == "fa" else messages["en"]["error"],
                 parse_mode="Markdown"
             )
             return
@@ -985,7 +999,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception as e:
             logger.error(f"Error in handle_admin_callback for user {user_id}: {e}")
             await query.message.reply_text(
-                "❌ *خطا*: مشکلی در پردازش درخواست رخ داد!" if lang == "fa" else "❌ *Error*: An issue occurred while processing the request!",
+                messages["fa"]["error"] if lang == "fa" else messages["en"]["error"],
                 parse_mode="Markdown"
             )
 
@@ -1026,17 +1040,17 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error accessing database: {e}")
         await update.message.reply_text(
-            "❌ *خطا*: مشکلی در دسترسی به دیتابیس رخ داد!" if lang == "fa" else
-            "❌ *Error*: An issue occurred while accessing the database!",
+            messages[lang]["error"],
             parse_mode="Markdown"
         )
 
 async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     admin_id = int(os.getenv("ADMIN_ID", "536587863"))
-    lang = "en"
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
     if user_id != admin_id:
-        await update.message.reply_text("🚫 Unauthorized", parse_mode="Markdown")
+        await update.message.reply_text(messages[lang]["unauthorized"], parse_mode="Markdown")
         return
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -1059,6 +1073,19 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     return ConversationHandler.END
 
+async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    text = update.message.text
+    logger.warning(f"User {user_id} sent unexpected message: {text}, conversation state: {context.user_data.get('conversation_state')}")
+
+    await update.message.reply_text(
+        messages[lang]["unexpected_message"],
+        parse_mode="Markdown",
+        reply_markup=get_main_menu(lang)
+    )
+
 if __name__ == '__main__':
     TOKEN = os.getenv("BOT_TOKEN")
     if not TOKEN:
@@ -1068,7 +1095,10 @@ if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
 
     conv = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[
+            CommandHandler('start', start),
+            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw)$")
+        ],
         states={
             DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],
             DEPOSIT_NETWORK: [CallbackQueryHandler(handle_deposit_network)],
@@ -1079,11 +1109,13 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
+    # ترتیب هندلرها: ابتدا ConversationHandler، سپس CallbackQueryHandlerها
+    app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_menu_callback))
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
     app.add_handler(CommandHandler("debug", debug))
     app.add_handler(CommandHandler("test_db", test_db))
-    app.add_handler(conv)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message))
 
     logger.info("🚀 Starting bot polling...")
     app.run_polling()
