@@ -4,6 +4,7 @@ import psycopg2
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
+import telegram.error
 
 # تنظیم لاگ‌گیری
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 # تعریف مراحل برای ConversationHandler
 DEPOSIT_AMOUNT, DEPOSIT_NETWORK, DEPOSIT_TXID, WITHDRAW_AMOUNT, WITHDRAW_ADDRESS = range(5)
+
+# تنظیم پیش‌فرض ADMIN_ID
+DEFAULT_ADMIN_ID = "536587863"
 
 langs = {
     "فارسی": "fa",
@@ -805,9 +809,9 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    admin_id = os.getenv("ADMIN_ID")
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     message_id = update.message.message_id
-    logger.info(f"User {user_id} sent deposit TXID or screenshot, message_id: {message_id}")
+    logger.info(f"User {user_id} sent deposit TXID or screenshot, message_id: {message_id}, admin_id: {admin_id}")
 
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID: {admin_id}")
@@ -835,6 +839,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         # فوروارد پیام به ادمین
+        logger.info(f"Attempting to forward message {message_id} to admin {admin_id}")
         await context.bot.forward_message(
             chat_id=admin_id,
             from_chat_id=update.effective_chat.id,
@@ -847,6 +852,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         logger.info(f"Transaction recorded for user {user_id}")
 
         # ارسال پیام به ادمین
+        logger.info(f"Attempting to send notification to admin {admin_id}")
         await context.bot.send_message(
             chat_id=admin_id,
             text=(
@@ -889,8 +895,18 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.clear()
         return ConversationHandler.END
 
+    except telegram.error.TelegramError as tg_error:
+        logger.error(f"Telegram error in receive_deposit_txid for user {user_id}: {tg_error}")
+        await update.message.reply_text(
+            messages[lang]["admin_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     except Exception as e:
-        logger.error(f"Error in receive_deposit_txid for user {user_id}: {e}")
+        logger.error(f"Unexpected error in receive_deposit_txid for user {user_id}: {e}")
         await update.message.reply_text(
             messages[lang]["admin_error"],
             parse_mode="Markdown",
@@ -948,10 +964,10 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    admin_id = os.getenv("ADMIN_ID")
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     message_id = update.message.message_id
     address = update.message.text
-    logger.info(f"User {user_id} sent withdraw address: {address}, message_id: {message_id}")
+    logger.info(f"User {user_id} sent withdraw address: {address}, message_id: {message_id}, admin_id: {admin_id}")
 
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID: {admin_id}")
@@ -978,6 +994,7 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
 
     try:
         # فوروارد پیام به ادمین
+        logger.info(f"Attempting to forward message {message_id} to admin {admin_id}")
         await context.bot.forward_message(
             chat_id=admin_id,
             from_chat_id=update.effective_chat.id,
@@ -990,6 +1007,7 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         logger.info(f"Withdrawal transaction recorded for user {user_id}")
 
         # ارسال پیام به ادمین
+        logger.info(f"Attempting to send notification to admin {admin_id}")
         await context.bot.send_message(
             chat_id=admin_id,
             text=(
@@ -1032,8 +1050,18 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         context.user_data.clear()
         return ConversationHandler.END
 
+    except telegram.error.TelegramError as tg_error:
+        logger.error(f"Telegram error in receive_withdraw_address for user {user_id}: {tg_error}")
+        await update.message.reply_text(
+            messages[lang]["admin_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     except Exception as e:
-        logger.error(f"Error in receive_withdraw_address for user {user_id}: {e}")
+        logger.error(f"Unexpected error in receive_withdraw_address for user {user_id}: {e}")
         await update.message.reply_text(
             messages[lang]["admin_error"],
             parse_mode="Markdown",
@@ -1045,7 +1073,7 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    admin_id = os.getenv("ADMIN_ID")
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID in handle_admin_callback: {admin_id}")
         return
@@ -1135,9 +1163,44 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode="Markdown"
             )
 
+async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
+    if not admin_id or not admin_id.isdigit():
+        logger.error(f"Invalid or missing ADMIN_ID in test_admin: {admin_id}")
+        await update.message.reply_text("Invalid ADMIN_ID configuration", parse_mode="Markdown")
+        return
+
+    admin_id = int(admin_id)
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+
+    if user_id != admin_id:
+        await update.message.reply_text(
+            messages[lang]["unauthorized"],
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=admin_id,
+            text="Test message from bot"
+        )
+        await update.message.reply_text(
+            "✅ Test message sent to admin successfully!",
+            parse_mode="Markdown"
+        )
+    except telegram.error.TelegramError as tg_error:
+        logger.error(f"Failed to send test message to admin {admin_id}: {tg_error}")
+        await update.message.reply_text(
+            f"❌ Failed to send test message: {tg_error}",
+            parse_mode="Markdown"
+        )
+
 async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    admin_id = os.getenv("ADMIN_ID")
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID in debug: {admin_id}")
         return
@@ -1183,7 +1246,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    admin_id = os.getenv("ADMIN_ID")
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID in test_db: {admin_id}")
         return
@@ -1257,6 +1320,7 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
     app.add_handler(CommandHandler("debug", debug))
     app.add_handler(CommandHandler("test_db", test_db))
+    app.add_handler(CommandHandler("test_admin", test_admin))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message))
 
     logger.info("🚀 Starting bot polling...")
