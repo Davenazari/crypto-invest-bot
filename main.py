@@ -67,6 +67,16 @@ messages = {
             "مشکلی در ثبت درخواست پیش آمد.\n"
             "🔄 لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
         ),
+        "db_error": (
+            "❌ *خطای دیتابیس!*\n"
+            "مشکلی در ثبت تراکنش رخ داد.\n"
+            "📩 لطفاً با پشتیبانی تماس بگیرید."
+        ),
+        "admin_error": (
+            "❌ *خطای ارتباط با ادمین!*\n"
+            "نمی‌توان درخواست را به ادمین ارسال کرد.\n"
+            "📩 لطفاً با پشتیبانی تماس بگیرید."
+        ),
         "cancel": "🛑 *عملیات لغو شد*\nبرای بازگشت به منوی اصلی، /start را وارد کنید.",
         "confirmed": (
             "✅ *تراکنش تأیید شد!*\n"
@@ -155,6 +165,11 @@ messages = {
             "⚠️ *پیام نامعتبر*\n"
             "لطفاً از دکمه‌های منو استفاده کنید یا مقدار معتبری وارد کنید.\n"
             "برای بازگشت به منوی اصلی، /start را وارد کنید."
+        ),
+        "invalid_data": (
+            "⚠️ *داده نامعتبر!*\n"
+            "داده‌های لازم برای ثبت تراکنش موجود نیست.\n"
+            "🔄 لطفاً دوباره از ابتدا شروع کنید."
         )
     },
     "en": {
@@ -205,6 +220,16 @@ messages = {
             "❌ *Error Occurred!*\n"
             "There was an issue processing your request.\n"
             "🔄 Please try again or contact support."
+        ),
+        "db_error": (
+            "❌ *Database Error!*\n"
+            "There was an issue recording the transaction.\n"
+            "📩 Please contact support."
+        ),
+        "admin_error": (
+            "❌ *Admin Communication Error!*\n"
+            "Unable to send the request to the admin.\n"
+            "📩 Please contact support."
         ),
         "cancel": "🛑 *Operation Cancelled*\nTo return to the main menu, use /start.",
         "confirmed": (
@@ -294,6 +319,11 @@ messages = {
             "⚠️ *Invalid Message*\n"
             "Please use the menu buttons or enter a valid amount.\n"
             "To return to the main menu, use /start."
+        ),
+        "invalid_data": (
+            "⚠️ *Invalid Data!*\n"
+            "Required data for the transaction is missing.\n"
+            "🔄 Please start over."
         )
     }
 }
@@ -314,6 +344,7 @@ def init_db():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
+        # ایجاد جدول users
         c.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -321,6 +352,7 @@ def init_db():
                 balance REAL DEFAULT 0.0
             )
         ''')
+        # ایجاد جدول transactions
         c.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 id SERIAL PRIMARY KEY,
@@ -335,6 +367,15 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
+        # بررسی و اضافه کردن ستون type اگر وجود ندارد
+        c.execute('''
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'transactions' AND column_name = 'type'
+        ''')
+        if not c.fetchone():
+            c.execute('ALTER TABLE transactions ADD COLUMN type TEXT')
+            logger.info("Added missing 'type' column to transactions table")
         conn.commit()
         logger.info("Database initialized successfully")
     except Exception as e:
@@ -764,19 +805,48 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+    admin_id = os.getenv("ADMIN_ID")
     message_id = update.message.message_id
     logger.info(f"User {user_id} sent deposit TXID or screenshot, message_id: {message_id}")
 
+    if not admin_id or not admin_id.isdigit():
+        logger.error(f"Invalid or missing ADMIN_ID: {admin_id}")
+        await update.message.reply_text(
+            messages[lang]["admin_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    admin_id = int(admin_id)
+    amount = context.user_data.get("amount")
+    network = context.user_data.get("network", "Unknown")
+
+    if not amount or amount <= 0 or not network:
+        logger.error(f"Invalid data for user {user_id}: amount={amount}, network={network}")
+        await update.message.reply_text(
+            messages[lang]["invalid_data"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     try:
+        # فوروارد پیام به ادمین
         await context.bot.forward_message(
             chat_id=admin_id,
             from_chat_id=update.effective_chat.id,
             message_id=message_id
         )
-        amount = context.user_data.get("amount", 0)
-        network = context.user_data.get("network", "Unknown")
+        logger.info(f"Message {message_id} forwarded to admin {admin_id}")
+
+        # ثبت تراکنش در دیتابیس
         insert_transaction(user_id, amount, network, "pending", "deposit", message_id)
+        logger.info(f"Transaction recorded for user {user_id}")
+
+        # ارسال پیام به ادمین
         await context.bot.send_message(
             chat_id=admin_id,
             text=(
@@ -798,6 +868,9 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
                 ]
             ])
         )
+        logger.info(f"Notification sent to admin {admin_id}")
+
+        # ارسال پیام موفقیت به کاربر
         await update.message.reply_text(
             messages[lang]["success"],
             parse_mode="Markdown",
@@ -805,10 +878,21 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         context.user_data.clear()
         return ConversationHandler.END
+
+    except psycopg2.Error as db_error:
+        logger.error(f"Database error in receive_deposit_txid for user {user_id}: {db_error}")
+        await update.message.reply_text(
+            messages[lang]["db_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     except Exception as e:
         logger.error(f"Error in receive_deposit_txid for user {user_id}: {e}")
         await update.message.reply_text(
-            messages[lang]["error"],
+            messages[lang]["admin_error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
@@ -864,19 +948,48 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+    admin_id = os.getenv("ADMIN_ID")
     message_id = update.message.message_id
     address = update.message.text
     logger.info(f"User {user_id} sent withdraw address: {address}, message_id: {message_id}")
 
+    if not admin_id or not admin_id.isdigit():
+        logger.error(f"Invalid or missing ADMIN_ID: {admin_id}")
+        await update.message.reply_text(
+            messages[lang]["admin_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    admin_id = int(admin_id)
+    amount = context.user_data.get("withdraw_amount")
+
+    if not amount or amount <= 0:
+        logger.error(f"Invalid withdraw amount for user {user_id}: amount={amount}")
+        await update.message.reply_text(
+            messages[lang]["invalid_data"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     try:
+        # فوروارد پیام به ادمین
         await context.bot.forward_message(
             chat_id=admin_id,
             from_chat_id=update.effective_chat.id,
             message_id=message_id
         )
-        amount = context.user_data.get("withdraw_amount", 0)
+        logger.info(f"Message {message_id} forwarded to admin {admin_id}")
+
+        # ثبت تراکنش در دیتابیس
         insert_transaction(user_id, amount, "Unknown", "pending", "withdrawal", message_id, address)
+        logger.info(f"Withdrawal transaction recorded for user {user_id}")
+
+        # ارسال پیام به ادمین
         await context.bot.send_message(
             chat_id=admin_id,
             text=(
@@ -898,6 +1011,9 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
                 ]
             ])
         )
+        logger.info(f"Notification sent to admin {admin_id}")
+
+        # ارسال پیام موفقیت به کاربر
         await update.message.reply_text(
             messages[lang]["withdraw_success"],
             parse_mode="Markdown",
@@ -905,10 +1021,21 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         )
         context.user_data.clear()
         return ConversationHandler.END
+
+    except psycopg2.Error as db_error:
+        logger.error(f"Database error in receive_withdraw_address for user {user_id}: {db_error}")
+        await update.message.reply_text(
+            messages[lang]["db_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
     except Exception as e:
         logger.error(f"Error in receive_withdraw_address for user {user_id}: {e}")
         await update.message.reply_text(
-            messages[lang]["error"],
+            messages[lang]["admin_error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
@@ -918,7 +1045,12 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+    admin_id = os.getenv("ADMIN_ID")
+    if not admin_id or not admin_id.isdigit():
+        logger.error(f"Invalid or missing ADMIN_ID in handle_admin_callback: {admin_id}")
+        return
+
+    admin_id = int(admin_id)
     logger.info(f"Received admin callback: {query.data} from user: {query.from_user.id}")
 
     if query.data.startswith("confirm_") or query.data.startswith("reject_"):
@@ -938,7 +1070,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         except ValueError as e:
             logger.error(f"Error parsing callback_data: {query.data}, error: {e}")
             await query.message.reply_text(
-                messages["fa"]["error"] if lang == "fa" else messages["en"]["error"],
+                messages["en"]["error"],
                 parse_mode="Markdown"
             )
             return
@@ -946,7 +1078,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         transaction = get_transaction(user_id, message_id)
         if not transaction:
             await query.message.reply_text(
-                messages["fa"]["error"] if lang == "fa" else messages["en"]["error"],
+                messages["en"]["error"],
                 parse_mode="Markdown"
             )
             return
@@ -999,13 +1131,18 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception as e:
             logger.error(f"Error in handle_admin_callback for user {user_id}: {e}")
             await query.message.reply_text(
-                messages["fa"]["error"] if lang == "fa" else messages["en"]["error"],
+                messages["en"]["error"],
                 parse_mode="Markdown"
             )
 
 async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+    admin_id = os.getenv("ADMIN_ID")
+    if not admin_id or not admin_id.isdigit():
+        logger.error(f"Invalid or missing ADMIN_ID in debug: {admin_id}")
+        return
+
+    admin_id = int(admin_id)
     user = get_user(user_id)
     lang = user[0] if user else "en"
 
@@ -1038,7 +1175,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
     except Exception as e:
-        logger.error(f"Error accessing database: {e}")
+        logger.error(f"Error accessing database in debug: {e}")
         await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown"
@@ -1046,7 +1183,12 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    admin_id = int(os.getenv("ADMIN_ID", "536587863"))
+    admin_id = os.getenv("ADMIN_ID")
+    if not admin_id or not admin_id.isdigit():
+        logger.error(f"Invalid or missing ADMIN_ID in test_db: {admin_id}")
+        return
+
+    admin_id = int(admin_id)
     user = get_user(user_id)
     lang = user[0] if user else "en"
     if user_id != admin_id:
