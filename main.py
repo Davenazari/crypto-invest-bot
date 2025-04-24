@@ -1264,6 +1264,27 @@ async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error connecting to database: {e}", parse_mode="Markdown")
 
+async def reset_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
+    if not admin_id or not admin_id.isdigit():
+        logger.error(f"Invalid or missing ADMIN_ID in reset_db: {admin_id}")
+        await update.message.reply_text("Invalid ADMIN_ID configuration", parse_mode="Markdown")
+        return
+
+    admin_id = int(admin_id)
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    if user_id != admin_id:
+        await update.message.reply_text(messages[lang]["unauthorized"], parse_mode="Markdown")
+        return
+    try:
+        init_db()
+        await update.message.reply_text("✅ Database reset successfully!", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error resetting database: {e}")
+        await update.message.reply_text(f"❌ Error resetting database: {e}", parse_mode="Markdown")
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
@@ -1291,6 +1312,18 @@ async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAUL
         reply_markup=get_main_menu(lang)
     )
 
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Update {update} caused error {context.error}")
+    if update and update.effective_message:
+        user_id = update.effective_user.id
+        user = get_user(user_id)
+        lang = user[0] if user else "en"
+        await update.effective_message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+
 if __name__ == '__main__':
     TOKEN = os.getenv("BOT_TOKEN")
     if not TOKEN:
@@ -1312,16 +1345,19 @@ if __name__ == '__main__':
             WITHDRAW_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_address)],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
+        per_message=True
     )
 
-    # ترتیب هندلرها: ابتدا ConversationHandler، سپس CallbackQueryHandlerها
+    # ترتیب هندلرها: ابتدا ConversationHandler، سپس CallbackQueryHandlerهای خاص
     app.add_handler(conv)
-    app.add_handler(CallbackQueryHandler(handle_menu_callback))
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
+    app.add_handler(CallbackQueryHandler(handle_menu_callback, pattern="^(wallet|history|language|lang_|support|back_to_menu)$"))
     app.add_handler(CommandHandler("debug", debug))
     app.add_handler(CommandHandler("test_db", test_db))
     app.add_handler(CommandHandler("test_admin", test_admin))
+    app.add_handler(CommandHandler("reset_db", reset_db))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message))
+    app.add_error_handler(error_handler)
 
     logger.info("🚀 Starting bot polling...")
     app.run_polling()
