@@ -566,7 +566,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         if query.data == "deposit":
-            context.user_data["conversation_state"] = DEPOSIT_AMOUNT
             await query.message.reply_text(
                 messages[lang]["ask_amount"],
                 parse_mode="Markdown",
@@ -605,7 +604,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
 
         elif query.data == "withdraw":
-            context.user_data["conversation_state"] = WITHDRAW_AMOUNT
             await query.message.reply_text(
                 messages[lang]["ask_withdraw_amount"],
                 parse_mode="Markdown",
@@ -1304,13 +1302,14 @@ async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAUL
     user = get_user(user_id)
     lang = user[0] if user else "en"
     text = update.message.text
-    logger.warning(f"User {user_id} sent unexpected message: {text}, conversation state: {context.user_data.get('conversation_state')}")
+    logger.warning(f"User {user_id} sent unexpected message: {text}")
 
     await update.message.reply_text(
         messages[lang]["unexpected_message"],
         parse_mode="Markdown",
         reply_markup=get_main_menu(lang)
     )
+    return ConversationHandler.END
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Update {update} caused error {context.error}")
@@ -1335,7 +1334,7 @@ if __name__ == '__main__':
     conv = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw)$")
+            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw|wallet|history|language|lang_|support|back_to_menu)$")
         ],
         states={
             DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],
@@ -1344,19 +1343,20 @@ if __name__ == '__main__':
             WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdraw_amount)],
             WITHDRAW_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_address)],
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
-        per_message=True
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
+        ]
     )
 
-    # ترتیب هندلرها: ابتدا ConversationHandler، سپس CallbackQueryHandlerهای خاص
+    # ترتیب هندلرها
+    app.add_handler(CommandHandler('start', start))  # هندلر جداگانه برای اطمینان از اجرای /start
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
-    app.add_handler(CallbackQueryHandler(handle_menu_callback, pattern="^(wallet|history|language|lang_|support|back_to_menu)$"))
     app.add_handler(CommandHandler("debug", debug))
     app.add_handler(CommandHandler("test_db", test_db))
     app.add_handler(CommandHandler("test_admin", test_admin))
     app.add_handler(CommandHandler("reset_db", reset_db))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message))
     app.add_error_handler(error_handler)
 
     logger.info("🚀 Starting bot polling...")
