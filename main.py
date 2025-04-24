@@ -2,6 +2,7 @@ import logging
 import os
 import psycopg2
 from datetime import datetime
+import datetime as dt  # اضافه شده برای datetime.UTC
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 import telegram.error
@@ -367,19 +368,20 @@ def init_db():
                 type TEXT,
                 created_at TEXT,
                 message_id BIGINT,
-                address TEXT,
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
-        # بررسی و اضافه کردن ستون type اگر وجود ندارد
+        # بررسی و اضافه کردن ستون address اگر وجود ندارد
         c.execute('''
             SELECT column_name 
             FROM information_schema.columns 
-            WHERE table_name = 'transactions' AND column_name = 'type'
+            WHERE table_name = 'transactions' AND column_name = 'address'
         ''')
         if not c.fetchone():
-            c.execute('ALTER TABLE transactions ADD COLUMN type TEXT')
-            logger.info("Added missing 'type' column to transactions table")
+            c.execute('ALTER TABLE transactions ADD COLUMN address TEXT')
+            logger.info("Added missing 'address' column to transactions table")
+        else:
+            logger.info("Column 'address' already exists in transactions table")
         conn.commit()
         logger.info("Database initialized successfully")
     except Exception as e:
@@ -443,7 +445,7 @@ def insert_transaction(user_id, amount, network, status, type, message_id, addre
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        created_at = datetime.utcnow().isoformat()
+        created_at = dt.datetime.now(dt.UTC).isoformat()  # اصلاح شده
         c.execute('''
             INSERT INTO transactions (user_id, amount, network, status, type, created_at, message_id, address)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
