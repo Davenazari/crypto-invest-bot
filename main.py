@@ -2,7 +2,7 @@ import logging
 import os
 import psycopg2
 from datetime import datetime
-import datetime as dt  # اضافه شده برای datetime.UTC
+import datetime as dt
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 import telegram.error
@@ -144,6 +144,11 @@ messages = {
         "language_updated": (
             "✅ *زبان به‌روزرسانی شد!*\n"
             "اکنون از منوی اصلی می‌توانید ادامه دهید."
+        ),
+        "language_error": (
+            "❌ *خطا در تغییر زبان!*\n"
+            "زبان انتخاب‌شده نامعتبر است یا مشکلی پیش آمده.\n"
+            "🔄 لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
         ),
         "support": (
             "📩 *پشتیبانی*\n"
@@ -299,6 +304,11 @@ messages = {
             "✅ *Language Updated!*\n"
             "You can now continue from the main menu."
         ),
+        "language_error": (
+            "❌ *Language Change Error!*\n"
+            "The selected language is invalid or an issue occurred.\n"
+            "🔄 Please try again or contact support."
+        ),
         "support": (
             "📩 *Support*\n"
             "For assistance, contact our support team:\n"
@@ -349,7 +359,6 @@ def init_db():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        # ایجاد جدول users
         c.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -357,7 +366,6 @@ def init_db():
                 balance REAL DEFAULT 0.0
             )
         ''')
-        # ایجاد جدول transactions
         c.execute('''
             CREATE TABLE IF NOT EXISTS transactions (
                 id SERIAL PRIMARY KEY,
@@ -371,7 +379,6 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
-        # بررسی و اضافه کردن ستون address اگر وجود ندارد
         c.execute('''
             SELECT column_name 
             FROM information_schema.columns 
@@ -445,7 +452,7 @@ def insert_transaction(user_id, amount, network, status, type, message_id, addre
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        created_at = dt.datetime.now(dt.UTC).isoformat()  # اصلاح شده
+        created_at = dt.datetime.now(dt.UTC).isoformat()
         c.execute('''
             INSERT INTO transactions (user_id, amount, network, status, type, created_at, message_id, address)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -542,10 +549,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     logger.info(f"User {user_id} called /start")
     
-    # پاک‌سازی داده‌های قبلی کاربر
     context.user_data.clear()
     
-    # تنظیم زبان پیش‌فرض انگلیسی برای کاربران جدید
     user = get_user(user_id)
     lang = user[0] if user else "en"
     if not user:
@@ -558,13 +563,57 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ConversationHandler.END
 
+async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"User {user_id} triggered language callback: {query.data}")
+
+    try:
+        if query.data in ["lang_fa", "lang_en"]:
+            new_lang = query.data.split("_")[1]
+            if new_lang not in ["fa", "en"]:
+                logger.error(f"Invalid language selected by user {user_id}: {new_lang}")
+                await query.message.reply_text(
+                    messages[lang]["language_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            upsert_user(user_id, language=new_lang)
+            logger.info(f"Language updated for user {user_id} to {new_lang}")
+            await query.message.reply_text(
+                messages[new_lang]["language_updated"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(new_lang)
+            )
+            return ConversationHandler.END
+        else:
+            logger.warning(f"Unexpected language callback data for user {user_id}: {query.data}")
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in handle_language_callback for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["language_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        return ConversationHandler.END
+
 async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"User {user_id} triggered callback: {query.data}")
+    logger.info(f"User {user_id} triggered menu callback: {query.data}")
 
     try:
         if query.data == "deposit":
@@ -674,16 +723,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     ],
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
                 ])
-            )
-            return ConversationHandler.END
-
-        elif query.data.startswith("lang_"):
-            new_lang = query.data.split("_")[1]
-            upsert_user(user_id, language=new_lang)
-            await query.message.reply_text(
-                messages[new_lang]["language_updated"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(new_lang)
             )
             return ConversationHandler.END
 
@@ -838,7 +877,6 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
     try:
-        # فوروارد پیام به ادمین
         logger.info(f"Attempting to forward message {message_id} to admin {admin_id}")
         await context.bot.forward_message(
             chat_id=admin_id,
@@ -847,11 +885,9 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         logger.info(f"Message {message_id} forwarded to admin {admin_id}")
 
-        # ثبت تراکنش در دیتابیس
         insert_transaction(user_id, amount, network, "pending", "deposit", message_id)
         logger.info(f"Transaction recorded for user {user_id}")
 
-        # ارسال پیام به ادمین
         logger.info(f"Attempting to send notification to admin {admin_id}")
         await context.bot.send_message(
             chat_id=admin_id,
@@ -876,7 +912,6 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         logger.info(f"Notification sent to admin {admin_id}")
 
-        # ارسال پیام موفقیت به کاربر
         await update.message.reply_text(
             messages[lang]["success"],
             parse_mode="Markdown",
@@ -993,7 +1028,6 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         return ConversationHandler.END
 
     try:
-        # فوروارد پیام به ادمین
         logger.info(f"Attempting to forward message {message_id} to admin {admin_id}")
         await context.bot.forward_message(
             chat_id=admin_id,
@@ -1002,11 +1036,9 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         )
         logger.info(f"Message {message_id} forwarded to admin {admin_id}")
 
-        # ثبت تراکنش در دیتابیس
         insert_transaction(user_id, amount, "Unknown", "pending", "withdrawal", message_id, address)
         logger.info(f"Withdrawal transaction recorded for user {user_id}")
 
-        # ارسال پیام به ادمین
         logger.info(f"Attempting to send notification to admin {admin_id}")
         await context.bot.send_message(
             chat_id=admin_id,
@@ -1031,7 +1063,6 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         )
         logger.info(f"Notification sent to admin {admin_id}")
 
-        # ارسال پیام موفقیت به کاربر
         await update.message.reply_text(
             messages[lang]["withdraw_success"],
             parse_mode="Markdown",
@@ -1336,7 +1367,8 @@ if __name__ == '__main__':
     conv = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw|wallet|history|language|lang_|support|back_to_menu)$")
+            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw|wallet|history|language|support|back_to_menu)$"),
+            CallbackQueryHandler(handle_language_callback, pattern="^(lang_fa|lang_en)$")
         ],
         states={
             DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],
@@ -1351,8 +1383,7 @@ if __name__ == '__main__':
         ]
     )
 
-    # ترتیب هندلرها
-    app.add_handler(CommandHandler('start', start))  # هندلر جداگانه برای اطمینان از اجرای /start
+    app.add_handler(CommandHandler('start', start))
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
     app.add_handler(CommandHandler("debug", debug))
