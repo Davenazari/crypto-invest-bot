@@ -4,7 +4,7 @@ import psycopg2
 from datetime import datetime
 import datetime as dt
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler, JobQueue
 import telegram.error
 import uuid
 
@@ -207,6 +207,12 @@ messages = {
             "هنوز هیچ کاربری از طریق شما دعوت نشده است.\n"
             f"🔗 *لینک دعوت شما*: `YOUR_LINK_WILL_BE_HERE`\n"
             f"📌 لینک خود را به اشتراک بگذارید تا سود کسب کنید!"
+        ),
+        "profit_added": lambda amount, period: (
+            f"🎉 *سود جدید اضافه شد!*\n"
+            f"💰 *مقدار*: `{amount}` تتر\n"
+            f"📅 *دوره*: {period}\n"
+            f"📌 موجودی جدید خود را در بخش کیف پول بررسی کنید."
         )
     },
     "en": {
@@ -236,163 +242,7 @@ messages = {
             "Please choose the network for your deposit:\n"
             "👇 Choose one of the options below 👇"
         ),
-        "wallet": lambda network, address: (
-            f"✅ *{network} Wallet Address*\n"
-            "Please send your deposit to this address:\n"
-            f"📋 `{address}`\n"
-            f"⚠️ *Note*: Only use the *{network}* network!"
-        ),
-        "ask_txid": (
-            "📝 *Send TXID or Screenshot*\n"
-            "Please send the *TXID* of your transaction or a *screenshot* of the deposit:\n"
-            "📌 Copy the TXID or send a clear image."
-        ),
-        "invalid_amount": "⚠️ *Error*: Invalid amount entered!\nPlease enter a valid number (e.g., 100).",
-        "success": (
-            "🎉 *Deposit Recorded!*\n"
-            "Your transaction has been successfully recorded.\n"
-            "⏳ Please wait for confirmation from our team."
-        ),
-        "error": (
-            "❌ *Error Occurred!*\n"
-            "There was an issue processing your request.\n"
-            "🔄 Please try again or contact support."
-        ),
-        "db_error": (
-            "❌ *Database Error!*\n"
-            "There was an issue recording the transaction.\n"
-            "📩 Please contact support."
-        ),
-        "admin_error": (
-            "❌ *Admin Communication Error!*\n"
-            "Unable to send the request to the admin.\n"
-            "📩 Please contact support."
-        ),
-        "cancel": "🛑 *Operation Cancelled*\nTo return to the main menu, use /start.",
-        "confirmed": (
-            "✅ *Transaction Confirmed!*\n"
-            "Your deposit has been successfully confirmed.\n"
-            "📈 Your investment is now active!"
-        ),
-        "rejected": (
-            "❌ *Transaction Rejected!*\n"
-            "Your deposit was not approved.\n"
-            "📩 Please contact support for more details."
-        ),
-        "wallet_menu": "💼 *My Wallet*\nPlease select an option:",
-        "wallet_balance": lambda balance: (
-            f"💼 *Your Wallet Balance*\n"
-            f"────────────────────\n"
-            f"💰 *Amount*: `{balance}` USDT\n"
-            f"────────────────────\n"
-            f"📌 Choose an option below to deposit or withdraw."
-        ),
-        "wallet_empty": (
-            "💼 *Wallet is Empty!*\n"
-            "No deposits have been confirmed yet.\n"
-            "📌 To deposit, select Deposit from the main menu."
-        ),
-        "withdraw": "💸 *Withdraw*",
-        "ask_withdraw_amount": (
-            "💰 *Withdrawal Amount*\n"
-            "Please enter the amount of USDT you want to withdraw:\n"
-            "📌 The amount must be less than or equal to your balance."
-        ),
-        "insufficient_balance": (
-            "⚠️ *Error*: Insufficient balance!\n"
-            "Please enter an amount less than or equal to your balance."
-        ),
-        "ask_withdraw_address": (
-            "📋 *Wallet Address*\n"
-            "Please enter your USDT wallet address for withdrawal:\n"
-            "📌 Enter the address carefully."
-        ),
-        "withdraw_success": (
-            "🎉 *Withdrawal Request Recorded!*\n"
-            "Your request has been successfully recorded.\n"
-            "⏳ Please wait for confirmation from our team."
-        ),
-        "withdraw_confirmed": (
-            "✅ *Withdrawal Confirmed!*\n"
-            "Your withdrawal request has been successfully confirmed.\n"
-            "📤 The funds will be sent to your wallet soon!"
-        ),
-        "withdraw_rejected": (
-            "❌ *Withdrawal Rejected!*\n"
-            "Your withdrawal request was not approved.\n"
-            "📩 Please contact support for more details."
-        ),
-        "language_menu": (
-            "🌐 *Select Language*\n"
-            "Please choose your preferred language:\n"
-            "👇 Choose one of the options below 👇"
-        ),
-        "language_updated": (
-            "✅ *Language Updated!*\n"
-            "You can now continue from the main menu."
-        ),
-        "language_error": (
-            "❌ *Language Change Error!*\n"
-            "The selected language is invalid or an issue occurred.\n"
-            "🔄 Please try again or contact support."
-        ),
-        "support": (
-            "📩 *Support*\n"
-            "For assistance, contact our support team:\n"
-            "👤 @farzadnazari"
-        ),
-        "history": lambda transactions: (
-            f"📜 *Transaction History*\n"
-            f"────────────────────\n"
-            f"{transactions}\n"
-            f"────────────────────\n"
-            f"📌 For a new deposit or withdrawal, go to the main menu."
-        ),
-        "no_history": (
-            "📜 *No Transaction History*\n"
-            "No transactions have been recorded yet.\n"
-            "📌 To deposit, go to the main menu."
-        ),
-        "unauthorized": (
-            "🚫 *Error*: You are not authorized to access this command!\n"
-            "📩 Please contact support."
-        ),
-        "unexpected_message": (
-            "⚠️ *Invalid Message*\n"
-            "Please use the menu buttons or enter a valid amount.\n"
-            "To return to the main menu, use /start."
-        ),
-        "invalid_data": (
-            "⚠️ *Invalid Data!*\n"
-            "Required data for the transaction is missing.\n"
-            "🔄 Please start over."
-        ),
-        "referral_menu": (
-            "🤝 *Invite Friends*\n"
-            "Please select an option:"
-        ),
-        "referral_info": lambda link, level1, level2, level3, total_profit, transactions: (
-            f"🤝 *Referral System*\n"
-            f"────────────────────\n"
-            f"🔗 *Your Referral Link*: `{link}`\n"
-            f"👥 *Invited Users*:\n"
-            f"  📌 Level 1: `{level1}` users (5% profit)\n"
-            f"  📌 Level 2: `{level2}` users (3% profit)\n"
-            f"  📌 Level 3: `{level3}` users (1% profit)\n"
-            f"💰 *Total Profit Earned*: `{total_profit}` USDT\n"
-            f"────────────────────\n"
-            f"📜 *Subordinates' Transactions*:\n{transactions}\n"
-            f"────────────────────\n"
-            f"📌 Share your link to earn more profits!"
-        ),
-        "no_referrals": (
-            "🤝 *No Referrals*\n"
-            "You haven't invited any users yet.\n"
-            f"🔗 *Your Referral Link*: `YOUR_LINK_WILL_BE_HERE`\n"
-            f"📌 Share your link to start earning!"
-        )
-    }
-}
+        "wallet": lambda network, address烈
 
 # Wallet addresses for deposits
 wallet_addresses = {
@@ -455,6 +305,16 @@ def init_db():
                         FOREIGN KEY (referrer_id) REFERENCES users (user_id),
                         FOREIGN KEY (referred_id) REFERENCES users (user_id),
                         FOREIGN KEY (transaction_id) REFERENCES transactions (id)
+                    )
+                ''')
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS profits (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT,
+                        amount REAL,
+                        period TEXT,
+                        created_at TEXT,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id)
                     )
                 ''')
                 conn.commit()
@@ -522,6 +382,25 @@ def insert_transaction(user_id, amount, network, status, type, message_id, addre
         logger.error(f"Error inserting transaction for user {user_id}: {e}")
         raise
 
+def insert_profit(user_id, amount, period):
+    """Insert a profit record into the database."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                created_at = dt.datetime.now(dt.UTC).isoformat()
+                c.execute('''
+                    INSERT INTO profits (user_id, amount, period, created_at)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id
+                ''', (user_id, amount, period, created_at))
+                profit_id = c.fetchone()[0]
+                conn.commit()
+                logger.info(f"Inserted profit for user {user_id}: amount {amount}, period {period}, id {profit_id}")
+                return profit_id
+    except Exception as e:
+        logger.error(f"Error inserting profit for user {user_id}: {e}")
+        raise
+
 def update_transaction_status(transaction_id, user_id, message_id, status):
     """Update transaction status."""
     try:
@@ -554,7 +433,7 @@ def get_transaction(user_id, message_id):
         return None
 
 def get_transaction_history(user_id):
-    """Retrieve transaction history for a user."""
+    """Retrieve transaction and profit history for a user."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
@@ -563,11 +442,21 @@ def get_transaction_history(user_id):
                     FROM transactions
                     WHERE user_id = %s
                     ORDER BY created_at DESC
-                    LIMIT 10
+                    LIMIT 5
                 ''', (user_id,))
                 transactions = c.fetchall()
-                logger.info(f"Retrieved {len(transactions)} transactions for user {user_id}")
-                return transactions
+                c.execute('''
+                    SELECT amount, period, created_at
+                    FROM profits
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 5
+                ''', (user_id,))
+                profits = [(amount, None, 'confirmed', 'profit', created_at, period) for amount, period, created_at in c.fetchall()]
+                combined = transactions + profits
+                combined.sort(key=lambda x: x[4], reverse=True)
+                logger.info(f"Retrieved {len(combined)} transactions and profits for user {user_id}")
+                return combined[:10]
     except Exception as e:
         logger.error(f"Error getting transaction history for user {user_id}: {e}")
         return []
@@ -657,6 +546,42 @@ def get_referral_chain(user_id):
         logger.error(f"Error getting referral chain for user {user_id}: {e}")
         return []
 
+# Profit calculation functions
+def calculate_profit(balance, period):
+    """Calculate profit based on balance and period."""
+    if period == "daily":
+        return round(balance * 0.005 / 30, 2)  # 0.5% monthly / 30 days
+    elif period == "weekly":
+        return round(balance * 0.005 / 4, 2)   # 0.5% monthly / 4 weeks
+    elif period == "monthly":
+        return round(balance * 0.005, 2)       # 0.5% monthly
+    return 0.0
+
+async def distribute_profits(context: ContextTypes.DEFAULT_TYPE, period: str):
+    """Distribute profits to all users based on period."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT user_id, balance, language FROM users WHERE balance > 0')
+                users = c.fetchall()
+                for user_id, balance, lang in users:
+                    profit = calculate_profit(balance, period)
+                    if profit > 0:
+                        update_balance(user_id, profit)
+                        insert_profit(user_id, profit, period)
+                        try:
+                            period_text = {"daily": "روزانه", "weekly": "هفتگی", "monthly": "ماهانه"}[period] if lang == "fa" else period
+                            await context.bot.send_message(
+                                chat_id=user_id,
+                                text=messages[lang]["profit_added"](profit, period_text),
+                                parse_mode="Markdown"
+                            )
+                            logger.info(f"Profit distributed to user {user_id}: {profit} USDT for {period}")
+                        except telegram.error.TelegramError as tg_error:
+                            logger.error(f"Failed to send profit notification to user {user_id}: {tg_error}")
+    except Exception as e:
+        logger.error(f"Error distributing {period} profits: {e}")
+
 # Initialize database
 try:
     init_db()
@@ -688,7 +613,6 @@ def get_referral_menu(lang):
             InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")
         ]
     ])
-
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
@@ -856,25 +780,33 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 }
                 type_map = {
                     "deposit": ("واریز", "Deposit"),
-                    "withdrawal": ("برداشت", "Withdrawal")
+                    "withdrawal": ("برداشت", "Withdrawal"),
+                    "profit": ("سود", "Profit")
                 }
                 for transaction in transactions:
-                    amount, network, status, type, created_at = transaction
+                    amount, network, status, type, created_at, *extra = transaction
                     logger.info(f"Processing transaction for user {user_id}: amount={amount}, network={network}, status={status}, type={type}, created_at={created_at}")
-                    if not all([amount, network, status, type, created_at]):
+                    if not all([amount, status, type, created_at]):
                         logger.warning(f"Invalid transaction data for user {user_id}: {transaction}")
                         continue
                     status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
                     type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
+                    extra_info = ""
+                    if type == "profit":
+                        period = extra[0] if extra else "Unknown"
+                        period_text = {"daily": "روزانه", "weekly": "هفتگی", "monthly": "ماهانه"}.get(period, period) if lang == "fa" else period
+                        extra_info = f"📅 *دوره*: {period_text}\n"
+                    elif network:
+                        extra_info = f"📲 *شبکه*: {network}\n"
                     transaction_text += (
                         f"💰 *{type_text}*: `{amount}` تتر\n"
-                        f"📲 *شبکه*: {network}\n"
+                        f"{extra_info}"
                         f"📅 *وضعیت*: {status_text}\n"
                         f"⏰ *زمان*: {created_at}\n"
                         f"────────────────────\n"
                     ) if lang == "fa" else (
                         f"💰 *{type_text}*: `{amount}` USDT\n"
-                        f"📲 *Network*: {network}\n"
+                        f"{extra_info}"
                         f"📅 *Status*: {status_text}\n"
                         f"⏰ *Time*: {created_at}\n"
                         f"────────────────────\n"
@@ -1567,6 +1499,8 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 referral_count = c.fetchone()[0]
                 c.execute('SELECT COUNT(*) FROM referral_profits')
                 profit_count = c.fetchone()[0]
+                c.execute('SELECT COUNT(*) FROM profits')
+                profit_dist_count = c.fetchone()[0]
         await update.message.reply_text(
             f"🛠 *وضعیت دیتابیس*\n"
             f"────────────────────\n"
@@ -1574,6 +1508,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 *تعداد تراکنش‌ها*: {transaction_count}\n"
             f"🤝 *تعداد رفرال‌ها*: {referral_count}\n"
             f"💰 *تعداد سودهای رفرال*: {profit_count}\n"
+            f"💸 *تعداد سودهای توزیع‌شده*: {profit_dist_count}\n"
             f"────────────────────" if lang == "fa" else
             f"🛠 *Database Status*\n"
             f"────────────────────\n"
@@ -1581,6 +1516,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 *Number of Transactions*: {transaction_count}\n"
             f"🤝 *Number of Referrals*: {referral_count}\n"
             f"💰 *Number of Referral Profits*: {profit_count}\n"
+            f"💸 *Number of Distributed Profits*: {profit_dist_count}\n"
             f"────────────────────",
             parse_mode="Markdown"
         )
@@ -1609,110 +1545,83 @@ async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with psycopg2.connect(DATABASE_URL) as conn:
             await update.message.reply_text("✅ Connection to PostgreSQL successful!")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error connecting to database: {e}", parse_mode="Markdown")
-
-async def reset_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reset database tables."""
-    user_id = update.effective_user.id
-    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
-    if not admin_id or not admin_id.isdigit():
-        logger.error(f"Invalid or missing ADMIN_ID in reset_db: {admin_id}")
-        await update.message.reply_text("Invalid ADMIN_ID configuration", parse_mode="Markdown")
-        return
-
-    admin_id = int(admin_id)
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    if user_id != admin_id:
-        await update.message.reply_text(messages[lang]["unauthorized"], parse_mode="Markdown")
-        return
-    try:
-        init_db()
-        await update.message.reply_text("✅ Database reset successfully!", parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error resetting database: {e}")
-        await update.message.reply_text(f"❌ Error resetting database: {e}", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ Error connecting to database: {e}")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancel ongoing conversation."""
+    """Cancel current operation."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"User {user_id} cancelled conversation")
-
+    logger.info(f"User {user_id} cancelled operation")
+    context.user_data.clear()
     await update.message.reply_text(
         messages[lang]["cancel"],
         parse_mode="Markdown",
         reply_markup=get_main_menu(lang)
     )
-    context.user_data.clear()
     return ConversationHandler.END
 
-async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def unexpected_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle unexpected messages."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    text = update.message.text
-    logger.warning(f"User {user_id} sent unexpected message: {text}")
-
+    logger.warning(f"User {user_id} sent unexpected message: {update.message.text}")
     await update.message.reply_text(
         messages[lang]["unexpected_message"],
         parse_mode="Markdown",
         reply_markup=get_main_menu(lang)
     )
-    context.user_data.clear()
     return ConversationHandler.END
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle errors."""
-    logger.error(f"Update {update} caused error {context.error}")
-    if update and update.effective_message:
-        user_id = update.effective_user.id
-        user = get_user(user_id)
-        lang = user[0] if user else "en"
-        await update.effective_message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
-        )
-        context.user_data.clear()
-
-if __name__ == '__main__':
-    TOKEN = os.getenv("BOT_TOKEN")
-    if not TOKEN:
+# Main function to set up the bot
+def main():
+    """Set up and run the bot."""
+    token = os.getenv("BOT_TOKEN")
+    if not token:
         logger.error("BOT_TOKEN not found in environment variables")
         exit(1)
 
-    app = ApplicationBuilder().token(TOKEN).build()
+    app = ApplicationBuilder().token(token).build()
+    
+    # JobQueue for scheduled profit distribution
+    job_queue = app.job_queue
+    job_queue.run_repeating(lambda ctx: distribute_profits(ctx, "daily"), interval=24*3600, first=10)
+    job_queue.run_repeating(lambda ctx: distribute_profits(ctx, "weekly"), interval=7*24*3600, first=10)
+    job_queue.run_repeating(lambda ctx: distribute_profits(ctx, "monthly"), interval=30*24*3600, first=10)
 
-    conv = ConversationHandler(
+    # Conversation handler for deposits and withdrawals
+    conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('start', start),
-            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw|wallet|history|referral|language|support|back_to_menu)$"),
-            CallbackQueryHandler(handle_language_callback, pattern="^(lang_fa|lang_en)$")
+            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|wallet|withdraw|history|referral|language|support|back_to_menu)$"),
+            CallbackQueryHandler(handle_language_callback, pattern="^lang_(fa|en)$")
         ],
         states={
             DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],
-            DEPOSIT_NETWORK: [CallbackQueryHandler(handle_deposit_network)],
-            DEPOSIT_TXID: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_deposit_txid)],
+            DEPOSIT_NETWORK: [CallbackQueryHandler(handle_deposit_network, pattern="^(TRC20|BEP20|back_to_menu)$")],
+            DEPOSIT_TXID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_deposit_txid),
+                MessageHandler(filters.PHOTO, receive_deposit_txid)
+            ],
             WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdraw_amount)],
             WITHDRAW_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_address)],
         },
         fallbacks=[
-            CommandHandler('cancel', cancel),
-            MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
+            CommandHandler("cancel", cancel),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, unexpected_message)
         ]
     )
 
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(conv)
-    app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
+    # Add handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(conv_handler)
+    app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm|reject)_(deposit|withdrawal)_.*$"))
+    app.add_handler(CommandHandler("test_admin", test_admin))
     app.add_handler(CommandHandler("debug", debug))
     app.add_handler(CommandHandler("test_db", test_db))
-    app.add_handler(CommandHandler("test_admin", test_admin))
-    app.add_handler(CommandHandler("reset_db", reset_db))
-    app.add_error_handler(error_handler)
 
-    logger.info("🚀 Starting bot polling...")
+    logger.info("Starting bot")
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
