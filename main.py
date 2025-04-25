@@ -920,7 +920,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 }
                 type_map = {
                     "deposit": ("واریز", "Deposit"),
-                    "withdrawal": ("برداشت", "Withdrawal")
+                    "withdrawal": ("برداشت", "Withdrawal"),
                     "profit": ("سود", "Profit")
                 }
                 for transaction in transactions:
