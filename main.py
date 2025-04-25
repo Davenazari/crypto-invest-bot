@@ -897,22 +897,22 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return ConversationHandler.END
 
-        await query.message.reply_text(
-            messages[lang]["wallet_balance"](balance, total_profit, transaction_count, last_transaction),
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("💸 واریز" if lang == "fa" else "💸 Deposit", callback_data="deposit"),
-                    InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
-                ],
-                [
-                    InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw") if balance > 0 else
-                    InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="no_balance")
-                ],
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-            ])
-        )
-        return ConversationHandler.END
+            await query.message.reply_text(
+                messages[lang]["wallet_balance"](balance, total_profit, transaction_count, last_transaction),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [
+                        InlineKeyboardButton("💸 واریز" if lang == "fa" else "💸 Deposit", callback_data="deposit"),
+                        InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
+                    ],
+                    [
+                        InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw") if balance > 0 else
+                        InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="no_balance")
+                    ],
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                ])
+            )
+            return ConversationHandler.END
 
         elif query.data == "withdraw":
             context.user_data.clear()
