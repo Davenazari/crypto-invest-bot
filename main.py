@@ -275,10 +275,6 @@ messages = {
             "❌ *Transaction Rejected!*\n"
             "Your deposit was not approved.\n"
             "📩 Please contact support for more details."
-         ),   
-
-# ادامه کد اصلاح‌شده
-            "📩 Please contact support for more details."
         ),
         "wallet_menu": "💼 *My Wallet*\nPlease select an option:",
         "wallet_balance": lambda balance: (
@@ -1653,7 +1649,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
-    lang = user[ = user[0] if user else "en"
+    lang = user[0] if user else "en"
     text = update.message.text
     logger.warning(f"User {user_id} sent unexpected message: {text}")
 
