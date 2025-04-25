@@ -926,7 +926,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 for transaction in transactions:
                     amount, network, status, type, created_at = transaction
                     logger.info(f"Processing transaction for user {user_id}: amount={amount}, network={network}, status={status}, type={type}, created_at={created_at}")
-                    if not all([amount, network, status, type, created_at]):
+                    if not all([amount, status, type, created_at]):
                         logger.warning(f"Invalid transaction data for user {user_id}: {transaction}")
                         continue
                     # Set network display for profit transactions
