@@ -273,7 +273,9 @@ messages = {
         ),
         "rejected": (
             "❌ *Transaction Rejected!*\n"
-            "Your deposit was not approved.\n"
+            "Your deposit was not approved '
+
+# ادامه کد اصلاح‌شده
             "📩 Please contact support for more details."
         ),
         "wallet_menu": "💼 *My Wallet*\nPlease select an option:",
@@ -506,8 +508,11 @@ def update_balance(user_id, amount):
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
         c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
+        c.execute('SELECT balance FROM users WHERE user_id = %s', (user_id,))
+        new_balance = c.fetchone()[0]
         conn.commit()
-        logger.info(f"Updated balance for user {user_id}: added {amount}")
+        logger.info(f"Updated balance for user {user_id}: added {amount}, new balance {new_balance}")
+        return new_balance
     except Exception as e:
         logger.error(f"Error updating balance for user {user_id}: {e}")
         raise
@@ -545,10 +550,10 @@ def update_transaction_status(transaction_id, user_id, message_id, status):
         c.execute('''
             UPDATE transactions
             SET status = %s
-            WHERE user_id = %s AND message_id = %s AND status = 'pending'
-        ''', (status, user_id, message_id))
+            WHERE id = %s AND user_id = %s AND message_id = %s AND status = 'pending'
+        ''', (status, transaction_id, user_id, message_id))
         conn.commit()
-        logger.info(f"Updated transaction status for user {user_id}, message_id {message_id} to {status}")
+        logger.info(f"Updated transaction status for user {user_id}, transaction_id {transaction_id}, message_id {message_id} to {status}")
     except Exception as e:
         logger.error(f"Error updating transaction status for user {user_id}: {e}")
         raise
@@ -556,7 +561,7 @@ def update_transaction_status(transaction_id, user_id, message_id, status):
         if conn is not None:
             conn.close()
 
-def get_transaction(user_id, message_id):
+def get_transaction(transaction_id, user_id, message_id):
     conn = None
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -564,8 +569,8 @@ def get_transaction(user_id, message_id):
         c.execute('''
             SELECT amount, network, status, type, address
             FROM transactions
-            WHERE user_id = %s AND message_id = %s AND status = 'pending'
-        ''', (user_id, message_id))
+            WHERE id = %s AND user_id = %s AND message_id = %s AND status = 'pending'
+        ''', (transaction_id, user_id, message_id))
         transaction = c.fetchone()
         return transaction
     except Exception as e:
@@ -745,23 +750,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(user_id)
     lang = user[0] if user else "en"
     if not user:
-        upsert_user(user_id, language="en", referred_by=referred_by)
-        if referred_by:
-            # ثبت رفرال‌ها تا سطح ۳
-            add_referral(referred_by, user_id, 1)
-            chain = get_referral_chain(referred_by)
-            for referrer_id, level in chain:
-                if level < 3:  # تا سطح ۲ برای زیرمجموعه‌ها
-                    add_referral(referrer_id, user_id, level + 1)
+        try:
+            upsert_user(user_id, language="en", referred_by=referred_by)
+            if referred_by:
+                # ثبت رفرال‌ها تا سطح ۳
+                add_referral(referred_by, user_id, 1)
+                chain = get_referral_chain(referred_by)
+                for referrer_id, level in chain:
+                    if level < 3:  # تا سطح ۲ برای زیرمجموعه‌ها
+                        add_referral(referrer_id, user_id, level + 1)
+        except Exception as e:
+            logger.error(f"Error creating user {user_id}: {e}")
+            await update.message.reply_text(
+                messages[lang]["db_error"],
+                parse_mode="Markdown"
+            )
+            return ConversationHandler.END
     
     bot_username = (await context.bot.get_me()).username
     referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     
-    await update.message.reply_text(
-        messages[lang]["welcome"],
-        parse_mode="Markdown",
-        reply_markup=get_main_menu(lang)
-    )
+    try:
+        await update.message.reply_text(
+            messages[lang]["welcome"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+    except Exception as e:
+        logger.error(f"Error sending welcome message to user {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown"
+        )
     return ConversationHandler.END
 
 async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -785,10 +805,18 @@ async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT
                 return ConversationHandler.END
             upsert_user(user_id, language=new_lang)
             logger.info(f"Language updated for user {user_id} to {new_lang}")
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[new_lang]["language_updated"],
                 parse_mode="Markdown",
                 reply_markup=get_main_menu(new_lang)
+            )
+            return ConversationHandler.END
+        elif query.data == "back_to_menu":
+            context.user_data.clear()
+            await query.message.edit_text(
+                messages[lang]["main_menu"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
         else:
@@ -818,7 +846,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         if query.data == "deposit":
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["ask_amount"],
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
@@ -830,7 +858,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         elif query.data == "wallet":
             balance = user[1] if user else 0
             if balance == 0:
-                await query.message.reply_text(
+                await query.message.edit_text(
                     messages[lang]["wallet_empty"],
                     parse_mode="Markdown",
                     reply_markup=InlineKeyboardMarkup([
@@ -842,7 +870,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     ])
                 )
             else:
-                await query.message.reply_text(
+                await query.message.edit_text(
                     messages[lang]["wallet_balance"](balance),
                     parse_mode="Markdown",
                     reply_markup=InlineKeyboardMarkup([
@@ -856,7 +884,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
 
         elif query.data == "withdraw":
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["ask_withdraw_amount"],
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
@@ -868,7 +896,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         elif query.data == "history":
             transactions = get_transaction_history(user_id)
             if not transactions:
-                await query.message.reply_text(
+                await query.message.edit_text(
                     messages[lang]["no_history"],
                     parse_mode="Markdown",
                     reply_markup=InlineKeyboardMarkup([
@@ -904,7 +932,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     f"────────────────────\n"
                 )
 
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["history"](transaction_text),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
@@ -919,7 +947,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
             
             if level1 == 0 and level2 == 0 and level3 == 0:
-                await query.message.reply_text(
+                await query.message.edit_text(
                     messages[lang]["no_referrals"].replace("YOUR_LINK_WILL_BE_HERE", referral_link),
                     parse_mode="Markdown",
                     reply_markup=get_referral_menu(lang)
@@ -953,7 +981,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 if not transaction_text:
                     transaction_text = "📜 بدون تراکنش" if lang == "fa" else "📜 No transactions"
 
-                await query.message.reply_text(
+                await query.message.edit_text(
                     messages[lang]["referral_info"](referral_link, level1, level2, level3, total_profit, transaction_text),
                     parse_mode="Markdown",
                     reply_markup=get_referral_menu(lang)
@@ -961,7 +989,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
 
         elif query.data == "language":
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["language_menu"],
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
@@ -975,7 +1003,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
 
         elif query.data == "support":
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["support"],
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
@@ -986,7 +1014,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         elif query.data == "back_to_menu":
             context.user_data.clear()
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["main_menu"],
                 parse_mode="Markdown",
                 reply_markup=get_main_menu(lang)
@@ -1063,7 +1091,7 @@ async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_T
         if query.data in ["TRC20", "BEP20"]:
             address = wallet_addresses[query.data]
             context.user_data["network"] = query.data
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["wallet"](query.data, address),
                 parse_mode="Markdown"
             )
@@ -1077,7 +1105,7 @@ async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_T
             return DEPOSIT_TXID
         elif query.data == "back_to_menu":
             context.user_data.clear()
-            await query.message.reply_text(
+            await query.message.edit_text(
                 messages[lang]["main_menu"],
                 parse_mode="Markdown",
                 reply_markup=get_main_menu(lang)
@@ -1112,7 +1140,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
 
     admin_id = int(admin_id)
     amount = context.user_data.get("amount")
-    network = context.user_data.get("network", "Unknown")
+    network = context.user_data.get("network")
 
     if not amount or amount <= 0 or not network:
         logger.error(f"Invalid data for user {user_id}: amount={amount}, network={network}")
@@ -1191,7 +1219,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logger.error(f"Unexpected error in receive_deposit_txid for user {user_id}: {e}")
         await update.message.reply_text(
-            messages[lang]["admin_error"],
+            messages[lang]["error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
@@ -1342,7 +1370,7 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         logger.error(f"Unexpected error in receive_withdraw_address for user {user_id}: {e}")
         await update.message.reply_text(
-            messages[lang]["admin_error"],
+            messages[lang]["error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
@@ -1383,7 +1411,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
 
-        transaction = get_transaction(user_id, message_id)
+        transaction = get_transaction(transaction_id, user_id, message_id)
         if not transaction:
             await query.message.reply_text(
                 messages["en"]["error"],
@@ -1398,7 +1426,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         try:
             if action == "confirm":
                 if type == "deposit":
-                    update_balance(user_id, amount)
+                    new_balance = update_balance(user_id, amount)
                     update_transaction_status(transaction_id, user_id, message_id, "confirmed")
                     # محاسبه سود رفرال
                     referral_rates = {1: 0.05, 2: 0.03, 3: 0.01}  # ۵٪، ۳٪، ۱٪
@@ -1437,29 +1465,25 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                                 parse_mode="Markdown"
                             )
 
-                    user = get_user(user_id)
-                    balance = user[1] if user else 0
                     await context.bot.send_message(
                         chat_id=user_id,
                         text=messages[user_lang_id]["confirmed"],
                         parse_mode="Markdown"
                     )
-                    await query.message.reply_text(
-                        f"✅ *تراکنش واریز تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}\nموجودی جدید: {balance} تتر",
+                    await query.message.edit_text(
+                        f"✅ *تراکنش واریز تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}\nموجودی جدید: {new_balance} تتر",
                         parse_mode="Markdown"
                     )
                 elif type == "withdrawal":
-                    update_balance(user_id, -amount)
+                    new_balance = update_balance(user_id, -amount)
                     update_transaction_status(transaction_id, user_id, message_id, "confirmed")
-                    user = get_user(user_id)
-                    balance = user[1] if user else 0
                     await context.bot.send_message(
                         chat_id=user_id,
                         text=messages[user_lang_id]["withdraw_confirmed"],
                         parse_mode="Markdown"
                     )
-                    await query.message.reply_text(
-                        f"✅ *تراکنش برداشت تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nآدرس: {address}\nموجودی جدید: {balance} تتر",
+                    await query.message.edit_text(
+                        f"✅ *تراکنش برداشت تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nآدرس: {address}\nموجودی جدید: {new_balance} تتر",
                         parse_mode="Markdown"
                     )
             else:  # reject
@@ -1469,7 +1493,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     text=messages[user_lang_id]["rejected"] if type == "deposit" else messages[user_lang_id]["withdraw_rejected"],
                     parse_mode="Markdown"
                 )
-                await query.message.reply_text(
+                await query.message.edit_text(
                     f"❌ *تراکنش {type} رد شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}",
                     parse_mode="Markdown"
                 )
@@ -1627,7 +1651,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
-    lang = user[0] if user else "en"
+    lang = user[ = user[0] if user else "en"
     text = update.message.text
     logger.warning(f"User {user_id} sent unexpected message: {text}")
 
@@ -1662,7 +1686,7 @@ if __name__ == '__main__':
         entry_points=[
             CommandHandler('start', start),
             CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw|wallet|history|referral|language|support|back_to_menu)$"),
-            CallbackQueryHandler(handle_language_callback, pattern="^(lang_fa|lang_en)$")
+            CallbackQueryHandler(handle_language_callback, pattern="^(lang_fa|lang_en|back_to_menu)$")
         ],
         states={
             DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],
