@@ -177,7 +177,7 @@ messages = {
         "unexpected_message": (
             "⚠️ *پیام نامعتبر*\n"
             "لطفاً از دکمه‌های منو استفاده کنید یا مقدار معتبری وارد کنید.\n"
-            "برای بازگشت به منوی اصلی، /start را وارد کنید."
+            "برای بازگشت به منوی اصلی_EXISTING_CODE_HERE_ /start را وارد کنید."
         ),
         "invalid_data": (
             "⚠️ *داده نامعتبر!*\n"
@@ -416,8 +416,7 @@ def init_db():
                     CREATE TABLE IF NOT EXISTS users (
                         user_id BIGINT PRIMARY KEY,
                         language TEXT DEFAULT 'en',
-                        balance REAL DEFAULT 0.0,
-                        referred_by BIGINT
+                        balance REAL DEFAULT 0.0
                     )
                 ''')
                 c.execute('''
@@ -470,7 +469,7 @@ def get_user(user_id):
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                c.execute('SELECT language, balance, referred_by FROM users WHERE user_id = %s', (user_id,))
+                c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
                 return c.fetchone()
     except Exception as e:
         logger.error(f"Error getting user {user_id}: {e}")
@@ -482,12 +481,12 @@ def upsert_user(user_id, language='en', referred_by=None):
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('''
-                    INSERT INTO users (user_id, language, balance, referred_by)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO users (user_id, language, balance)
+                    VALUES (%s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET language = %s
-                ''', (user_id, language, 0.0, referred_by, language))
+                ''', (user_id, language, 0.0, language))
                 conn.commit()
-                logger.info(f"Upserted user {user_id} with language {language}, referred_by {referred_by}")
+                logger.info(f"Upserted user {user_id} with language {language}")
     except Exception as e:
         logger.error(f"Error upserting user {user_id}: {e}")
         raise
@@ -646,9 +645,9 @@ def get_referral_chain(user_id):
                 chain = []
                 current_id = user_id
                 for level in range(1, 4):
-                    c.execute('SELECT referred_by FROM users WHERE user_id = %s', (current_id,))
+                    c.execute('SELECT user_id FROM users WHERE user_id = %s', (current_id,))
                     result = c.fetchone()
-                    if result and result[0]:
+                    if result:
                         chain.append((result[0], level))
                         current_id = result[0]
                     else:
@@ -859,7 +858,12 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     "deposit": ("واریز", "Deposit"),
                     "withdrawal": ("برداشت", "Withdrawal")
                 }
-                for amount, network, status, type, created_at in transactions:
+                for transaction in transactions:
+                    amount, network, status, type, created_at = transaction
+                    logger.info(f"Processing transaction for user {user_id}: amount={amount}, network={network}, status={status}, type={type}, created_at={created_at}")
+                    if not all([amount, network, status, type, created_at]):
+                        logger.warning(f"Invalid transaction data for user {user_id}: {transaction}")
+                        continue
                     status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
                     type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
                     transaction_text += (
@@ -875,6 +879,9 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                         f"⏰ *Time*: {created_at}\n"
                         f"────────────────────\n"
                     )
+
+                if not transaction_text:
+                    transaction_text = "📜 بدون تراکنش معتبر" if lang == "fa" else "📜 No valid transactions"
 
                 await query.message.reply_text(
                     messages[lang]["history"](transaction_text),
@@ -1707,5 +1714,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("reset_db", reset_db))
     app.add_error_handler(error_handler)
 
-    logger.info("🚀 Starting bot polling...")
+    glogger.info("🚀 Starting bot polling...")
     app.run_polling()
