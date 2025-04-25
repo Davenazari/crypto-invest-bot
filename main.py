@@ -27,194 +27,211 @@ langs = {
 # Localized messages
 messages = {
     "fa": {
+        # پیام‌های فارسی همان‌طور که در بخش اول ارائه شده‌اند
         "welcome": (
             "🌟 *خوش آمدید به بات سرمایه‌گذاری!*\n"
             "با این بات می‌توانید با واریز USDT سرمایه‌گذاری کنید، موجودی کیف پول خود را مشاهده کنید و سود روزانه، هفتگی یا ماهانه کسب کنید. برای کمک با پشتیبانی تماس بگیرید!\n"
             "👇 گزینه مورد نظر خود را انتخاب کنید 👇"
         ),
-        "main_menu": "📋 *منوی اصلی*\nلطفاً یک گزینه را انتخاب کنید:",
-        "deposit": "💸 *واریز USDT*",
-        "ask_amount": (
-            "💰 *مقدار سرمایه‌گذاری*\n"
-            "لطفاً مقدار سرمایه‌گذاری خود را به *تتر (USDT)* وارد کنید (مثال: 100):\n"
-            "📌 عدد معتبر وارد کنید."
-        ),
-        "result": lambda amount: (
-            f"💵 *سرمایه‌گذاری شما: {amount} تتر*\n"
-            f"────────────────────\n"
-            f"📆 *سود روزانه*: `{round(amount * 0.5 / 30, 2)}` تتر → *مجموع*: `{round(amount + amount * 0.5 / 30, 2)}` تتر\n"
-            f"📅 *سود هفتگی*: `{round(amount * 0.5 / 4, 2)}` تتر → *مجموع*: `{round(amount + amount * 0.5 / 4, 2)}` تتر\n"
-            f"🗓️ *سود ماهانه*: `{round(amount * 0.5, 2)}` تتر → *مجموع*: `{round(amount + amount * 0.5, 2)}` تتر\n"
-            f"────────────────────\n"
-            f"💸 آماده واریز هستید؟"
-        ),
-        "choose_network": (
-            "📲 *انتخاب شبکه*\n"
-            "لطفاً شبکه مورد نظر برای واریز را انتخاب کنید:\n"
-            "👇 یکی از گزینه‌های زیر را انتخاب کنید 👇"
-        ),
+        # سایر پیام‌های فارسی ...
         "wallet": lambda network, address: (
             f"✅ *آدرس کیف پول {network}*\n"
             f"لطفاً واریز را به این آدرس انجام دهید:\n"
             f"📋 `{address}`\n"
             f"⚠️ *توجه*: فقط از شبکه *{network}* استفاده کنید!"
         ),
-        "ask_txid": (
-            "📝 *ارسال TXID یا اسکرین‌شات*\n"
-            "لطفاً *TXID* تراکنش یا *اسکرین‌شات* واریز خود را ارسال کنید:\n"
-            "📌 TXID را کپی کنید یا تصویر واضحی ارسال کنید."
+        # ادامه پیام‌های فارسی ...
+    },
+    "en": {
+        "welcome": (
+            "🌟 *Welcome to the Investment Bot!*\n"
+            "Invest in USDT, track your wallet, and earn daily, weekly, or monthly profits. Contact support for assistance!\n"
+            "👇 Choose an option below 👇"
         ),
-        "invalid_amount": "⚠️ *خطا*: مقدار واردشده معتبر نیست!\nلطفاً یک عدد معتبر (مثل 100) وارد کنید.",
+        "main_menu": "📋 *Main Menu*\nPlease select an option:",
+        "deposit": "💸 *Deposit USDT*",
+        "ask_amount": (
+            "💰 *Investment Amount*\n"
+            "Please enter your investment amount in *USDT* (e.g., 100):\n"
+            "📌 Enter a valid number."
+        ),
+        "result": lambda amount: (
+            f"💵 *Your Investment: {amount} USDT*\n"
+            f"────────────────────\n"
+            f"📆 *Daily Profit*: `{round(amount * 0.5 / 30, 2)}` USDT → *Total*: `{round(amount + amount * 0.5 / 30, 2)}` USDT\n"
+            f"📅 *Weekly Profit*: `{round(amount * 0.5 / 4, 2)}` USDT → *Total*: `{round(amount + amount * 0.5 / 4, 2)}` USDT\n"
+            f"🗓️ *Monthly Profit*: `{round(amount * 0.5, 2)}` USDT → *Total*: `{round(amount + amount * 0.5, 2)}` USDT\n"
+            f"────────────────────\n"
+            f"💸 Ready to deposit?"
+        ),
+        "choose_network": (
+            "📲 *Select Network*\n"
+            "Please choose the network for your deposit:\n"
+            "👇 Choose one of the options below 👇"
+        ),
+        "wallet": lambda network, address: (
+            f"✅ *{network} Wallet Address*\n"
+            f"Please make your deposit to this address:\n"
+            f"📋 `{address}`\n"
+            f"⚠️ *Note*: Only use the *{network}* network!"
+        ),
+        "ask_txid": (
+            "📝 *Send TXID or Screenshot*\n"
+            "Please send the *TXID* of your transaction or a *screenshot* of your deposit:\n"
+            "📌 Copy the TXID or send a clear image."
+        ),
+        "invalid_amount": "⚠️ *Error*: Invalid amount entered!\nPlease enter a valid number (e.g., 100).",
         "success": (
-            "🎉 *واریز ثبت شد!*\n"
-            "تراکنش شما با موفقیت ثبت شد.\n"
-            "⏳ لطفاً منتظر تأیید توسط تیم ما باشید."
+            "🎉 *Deposit Registered!*\n"
+            "Your transaction has been successfully registered.\n"
+            "⏳ Please wait for confirmation from our team."
         ),
         "error": (
-            "❌ *خطا رخ داد!*\n"
-            "مشکلی در ثبت درخواست پیش آمد.\n"
-            "🔄 لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
+            "❌ *An Error Occurred!*\n"
+            "There was an issue processing your request.\n"
+            "🔄 Please try again or contact support."
         ),
         "db_error": (
-            "❌ *خطای دیتابیس!*\n"
-            "مشکلی در ثبت تراکنش رخ داد.\n"
-            "📩 لطفاً با پشتیبانی تماس بگیرید."
+            "❌ *Database Error!*\n"
+            "There was an issue recording the transaction.\n"
+            "📩 Please contact support."
         ),
         "admin_error": (
-            "❌ *خطای ارتباط با ادمین!*\n"
-            "نمی‌توان درخواست را به ادمین ارسال کرد.\n"
-            "📩 لطفاً با پشتیبانی تماس بگیرید."
+            "❌ *Admin Communication Error!*\n"
+            "Unable to send the request to the admin.\n"
+            "📩 Please contact support."
         ),
-        "cancel": "🛑 *عملیات لغو شد*\nبرای بازگشت به منوی اصلی، /start را وارد کنید.",
+        "cancel": "🛑 *Operation Cancelled*\nTo return to the main menu, enter /start.",
         "confirmed": (
-            "✅ *تراکنش تأیید شد!*\n"
-            "واریز شما با موفقیت تأیید شد.\n"
-            "📈 سرمایه‌گذاری شما اکنون فعال است!"
+            "✅ *Transaction Confirmed!*\n"
+            "Your deposit has been successfully confirmed.\n"
+            "📈 Your investment is now active!"
         ),
         "rejected": (
-            "❌ *تراکنش رد شد!*\n"
-            "واریز شما تأیید نشد.\n"
-            "📩 لطفاً با پشتیبانی تماس بگیرید."
+            "❌ *Transaction Rejected!*\n"
+            "Your deposit was not approved.\n"
+            "📩 Please contact support."
         ),
-        "wallet_menu": "💼 *ولت من*\nلطفاً یک گزینه را انتخاب کنید:",
+        "wallet_menu": "💼 *My Wallet*\nPlease select an option:",
         "wallet_balance": lambda balance: (
-            f"💼 *موجودی کیف پول شما*\n"
+            f"💼 *Your Wallet Balance*\n"
             f"────────────────────\n"
-            f"💰 *مقدار*: `{balance}` تتر\n"
+            f"💰 *Amount*: `{balance}` USDT\n"
             f"────────────────────\n"
-            f"📌 برای واریز یا برداشت، گزینه‌های زیر را انتخاب کنید."
+            f"📌 For deposits or withdrawals, select the options below."
         ),
         "wallet_empty": (
-            "💼 *کیف پول خالی است!*\n"
-            "هنوز هیچ واریزی تأیید نشده است.\n"
-            "📌 برای واریز، از منوی اصلی گزینه واریز را انتخاب کنید."
+            "💼 *Wallet is Empty!*\n"
+            "No deposits have been confirmed yet.\n"
+            "📌 To make a deposit, select the deposit option from the main menu."
         ),
-        "withdraw": "💸 *برداشت*",
+        "withdraw": "💸 *Withdraw*",
         "ask_withdraw_amount": (
-            "💰 *مقدار برداشت*\n"
-            "لطفاً مقدار تتر (USDT) مورد نظر برای برداشت را وارد کنید:\n"
-            "📌 مقدار باید کمتر یا برابر با موجودی شما باشد."
+            "💰 *Withdrawal Amount*\n"
+            "Please enter the amount of USDT you wish to withdraw:\n"
+            "📌 The amount must be less than or equal to your balance."
         ),
         "insufficient_balance": (
-            "⚠️ *خطا*: موجودی کافی نیست!\n"
-            "لطفاً مقداری کمتر یا برابر با موجودی خود وارد کنید."
+            "⚠️ *Error*: Insufficient balance!\n"
+            "Please enter an amount less than or equal to your balance."
         ),
         "ask_withdraw_address": (
-            "📋 *آدرس کیف پول*\n"
-            "لطفاً آدرس کیف پول USDT خود را برای برداشت وارد کنید:\n"
-            "📌 آدرس را با دقت وارد کنید."
+            "📋 *Wallet Address*\n"
+            "Please enter your USDT wallet address for withdrawal:\n"
+            "📌 Enter the address carefully."
         ),
         "withdraw_success": (
-            "🎉 *درخواست برداشت ثبت شد!*\n"
-            "درخواست شما با موفقیت ثبت شد.\n"
-            "⏳ لطفاً منتظر تأیید توسط تیم ما باشید."
+            "🎉 *Withdrawal Request Registered!*\n"
+            "Your request has been successfully registered.\n"
+            "⏳ Please wait for confirmation from our team."
         ),
         "withdraw_confirmed": (
-            "✅ *برداشت تأیید شد!*\n"
-            "درخواست برداشت شما با موفقیت تأیید شد.\n"
-            "📤 وجه به زودی به کیف پول شما ارسال می‌شود!"
+            "✅ *Withdrawal Confirmed!*\n"
+            "Your withdrawal request has been successfully confirmed.\n"
+            "📤 The funds will be sent to your wallet soon!"
         ),
         "withdraw_rejected": (
-            "❌ *برداشت رد شد!*\n"
-            "درخواست برداشت شما تأیید نشد.\n"
-            "📩 لطفاً با پشتیبانی تماس بگیرید."
+            "❌ *Withdrawal Rejected!*\n"
+            "Your withdrawal request was not approved.\n"
+            "📩 Please contact support."
         ),
         "language_menu": (
-            "🌐 *انتخاب زبان*\n"
-            "لطفاً زبان مورد نظر خود را انتخاب کنید:\n"
-            "👇 یکی از گزینه‌های زیر را انتخاب کنید 👇"
+            "🌐 *Select Language*\n"
+            "Please choose your preferred language:\n"
+            "👇 Choose one of the options below 👇"
         ),
         "language_updated": (
-            "✅ *زبان به‌روزرسانی شد!*\n"
-            "اکنون از منوی اصلی می‌توانید ادامه دهید."
+            "✅ *Language Updated!*\n"
+            "You can now continue from the main menu."
         ),
         "language_error": (
-            "❌ *خطا در تغییر زبان!*\n"
-            "زبان انتخاب‌شده نامعتبر است یا مشکلی پیش آمده.\n"
-            "🔄 لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
+            "❌ *Language Change Error!*\n"
+            "The selected language is invalid or an issue occurred.\n"
+            "🔄 Please try again or contact support."
         ),
         "support": (
-            "📩 *پشتیبانی*\n"
-            "برای دریافت کمک، با پشتیبانی ما تماس بگیرید:\n"
+            "📩 *Support*\n"
+            "For assistance, contact our support team:\n"
             "👤 @farzadnazari"
         ),
         "history": lambda transactions: (
-            f"📜 *تاریخچه تراکنش‌ها*\n"
+            f"📜 *Transaction History*\n"
             f"────────────────────\n"
             f"{transactions}\n"
             f"────────────────────\n"
-            f"📌 برای واریز یا برداشت جدید، به منوی اصلی بروید."
+            f"📌 For new deposits or withdrawals, go to the main menu."
         ),
         "no_history": (
-            "📜 *بدون تاریخچه تراکنش*\n"
-            "هنوز هیچ تراکنشی ثبت نشده است.\n"
-            "📌 برای واریز، به منوی اصلی بروید."
+            "📜 *No Transaction History*\n"
+            "No transactions have been recorded yet.\n"
+            "📌 To make a deposit, go to the main menu."
         ),
         "unauthorized": (
-            "🚫 *خطا*: شما اجازه دسترسی به این دستور را ندارید!\n"
-            "📩 لطفاً با پشتیبانی تماس بگیرید."
+            "🚫 *Error*: You do not have permission to access this command!\n"
+            "📩 Please contact support."
         ),
         "unexpected_message": (
-            "⚠️ *پیام نامعتبر*\n"
-            "لطفاً از دکمه‌های منو استفاده کنید یا مقدار معتبری وارد کنید.\n"
-            "برای بازگشت به منوی اصلی، /start را وارد کنید."
+            "⚠️ *Invalid Message*\n"
+            "Please use the menu buttons or enter a valid value.\n"
+            "To return to the main menu, enter /start."
         ),
         "invalid_data": (
-            "⚠️ *داده نامعتبر!*\n"
-            "داده‌های لازم برای ثبت تراکنش موجود نیست.\n"
-            "🔄 لطفاً دوباره از ابتدا شروع کنید."
+            "⚠️ *Invalid Data!*\n"
+            "Required data for recording the transaction is missing.\n"
+            "🔄 Please start over."
         ),
         "referral_menu": (
-            "🤝 *دعوت دوستان*\n"
-            "لطفاً یک گزینه را انتخاب کنید:"
+            "🤝 *Invite Friends*\n"
+            "Please select an option:"
         ),
         "referral_info": lambda link, level1, level2, level3, total_profit, transactions: (
-            f"🤝 *سیستم رفرال*\n"
+            f"🤝 *Referral System*\n"
             f"────────────────────\n"
-            f"🔗 *لینک دعوت شما*: `{link}`\n"
-            f"👥 *کاربران دعوت‌شده*:\n"
-            f"  📌 سطح ۱: `{level1}` نفر (۵٪ سود)\n"
-            f"  📌 سطح ۲: `{level2}` نفر (۳٪ سود)\n"
-            f"  📌 سطح ۳: `{level3}` نفر (۱٪ سود)\n"
-            f"💰 *کل سود کسب‌شده*: `{total_profit}` تتر\n"
+            f"🔗 *Your Invite Link*: `{link}`\n"
+            f"👥 *Invited Users*:\n"
+            f"  📌 Level 1: `{level1}` users (5% profit)\n"
+            f"  📌 Level 2: `{level2}` users (3% profit)\n"
+            f"  📌 Level 3: `{level3}` users (1% profit)\n"
+            f"💰 *Total Profit Earned*: `{total_profit}` USDT\n"
             f"────────────────────\n"
-            f"📜 *تراکنش‌های زیرمجموعه‌ها*:\n{transactions}\n"
+            f"📜 *Subordinate Transactions*:\n{transactions}\n"
             f"────────────────────\n"
-            f"📌 لینک خود را به اشتراک بگذارید تا سود بیشتری کسب کنید!"
+            f"📌 Share your link to earn more profit!"
         ),
         "no_referrals": (
-            "🤝 *بدون رفرال*\n"
-            "هنوز هیچ کاربری از طریق شما دعوت نشده است.\n"
-            f"🔗 *لینک دعوت شما*: `YOUR_LINK_WILL_BE_HERE`\n"
-            f"📌 لینک خود را به اشتراک بگذارید تا سود کسب کنید!"
+            "🤝 *No Referrals*\n"
+            "No users have been invited by you yet.\n"
+            f"🔗 *Your Invite Link*: `YOUR_LINK_WILL_BE_HERE`\n"
+            f"📌 Share your link to start earning!"
         ),
         "profit_added": lambda amount, period: (
-            f"🎉 *سود جدید اضافه شد!*\n"
-            f"💰 *مقدار*: `{amount}` تتر\n"
-            f"📅 *دوره*: {period}\n"
-            f"📌 موجودی جدید خود را در بخش کیف پول بررسی کنید."
+            f"🎉 *New Profit Added!*\n"
+            f"💰 *Amount*: `{amount}` USDT\n"
+            f"📅 *Period*: {period}\n"
+            f"📌 Check your new balance in the wallet section."
         )
-    },
+    }
+}
     "en": {
         "welcome": (
             "🌟 *Welcome to the Investment Bot!*\n"
