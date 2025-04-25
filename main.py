@@ -2,7 +2,7 @@ import logging
 import os
 import psycopg2
 from datetime import datetime
-import datetime as dt  # اضافه شده برای datetime.UTC
+import datetime as dt
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 import telegram.error
@@ -175,6 +175,38 @@ messages = {
             "⚠️ *داده نامعتبر!*\n"
             "داده‌های لازم برای ثبت تراکنش موجود نیست.\n"
             "🔄 لطفاً دوباره از ابتدا شروع کنید."
+        ),
+        "referral_info": lambda link, level1, level2, level3, total_profit, transactions: (
+            f"🤝 *سیستم رفرال*\n"
+            f"────────────────────\n"
+            f"🔗 *لینک دعوت شما*: `{link}`\n"
+            f"👥 *کاربران دعوت‌شده*:\n"
+            f"  📌 سطح ۱: `{level1}` نفر (۵٪ سود)\n"
+            f"  📌 سطح ۲: `{level2}` نفر (۳٪ سود)\n"
+            f"  📌 سطح ۳: `{level3}` نفر (۱٪ سود)\n"
+            f"💰 *کل سود کسب‌شده*: `{total_profit}` تتر\n"
+            f"────────────────────\n"
+            f"📜 *تراکنش‌های زیرمجموعه‌ها*:\n{transactions}\n"
+            f"────────────────────\n"
+            f"📌 لینک خود را به اشتراک بگذارید تا سود بیشتری کسب کنید!"
+        ),
+        "no_referrals": lambda link: (
+            "🤝 *بدون رفرال*\n"
+            "هنوز هیچ کاربری از طریق شما دعوت نشده است.\n"
+            f"🔗 *لینک دعوت شما*: `{link}`\n"
+            f"📌 لینک خود را به اشتراک بگذارید تا سود کسب کنید!"
+        ),
+        "referral_menu": (
+            "🤝 *دعوت دوستان*\n"
+            "لطفاً یک گزینه را انتخاب کنید:"
+        ),
+        "referral_profit": lambda profit, level, referred_id: (
+            f"🎉 *سود رفرال جدید!*\n"
+            f"💰 *مقدار*: {profit} تتر\n"
+            f"📊 *سطح*: {level}\n"
+            f"👤 *کاربر دعوت‌شده*: {referred_id}\n"
+            f"────────────────────\n"
+            f"📌 برای مشاهده آمار، به بخش دعوت دوستان بروید."
         )
     },
     "en": {
@@ -329,6 +361,38 @@ messages = {
             "⚠️ *Invalid Data!*\n"
             "Required data for the transaction is missing.\n"
             "🔄 Please start over."
+        ),
+        "referral_info": lambda link, level1, level2, level3, total_profit, transactions: (
+            f"🤝 *Referral System*\n"
+            f"────────────────────\n"
+            f"🔗 *Your Referral Link*: `{link}`\n"
+            f"👥 *Invited Users*:\n"
+            f"  📌 Level 1: `{level1}` users (5% profit)\n"
+            f"  📌 Level 2: `{level2}` users (3% profit)\n"
+            f"  📌 Level 3: `{level3}` users (1% profit)\n"
+            f"💰 *Total Profit Earned*: `{total_profit}` USDT\n"
+            f"────────────────────\n"
+            f"📜 *Subordinates' Transactions*:\n{transactions}\n"
+            f"────────────────────\n"
+            f"📌 Share your link to earn more profits!"
+        ),
+        "no_referrals": lambda link: (
+            "🤝 *No Referrals*\n"
+            "You haven't invited any users yet.\n"
+            f"🔗 *Your Referral Link*: `{link}`\n"
+            f"📌 Share your link to start earning!"
+        ),
+        "referral_menu": (
+            "🤝 *Invite Friends*\n"
+            "Please select an option:"
+        ),
+        "referral_profit": lambda profit, level, referred_id: (
+            f"🎉 *New Referral Profit!*\n"
+            f"💰 *Amount*: {profit} USDT\n"
+            f"📊 *Level*: {level}\n"
+            f"👤 *Invited User*: {referred_id}\n"
+            f"────────────────────\n"
+            f"📌 Check the Invite Friends section for stats."
         )
     }
 }
@@ -349,12 +413,13 @@ def init_db():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        # ایجاد جدول users
+        # ایجاد جدول users با ستون referred_by
         c.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
                 language TEXT DEFAULT 'en',
-                balance REAL DEFAULT 0.0
+                balance REAL DEFAULT 0.0,
+                referred_by BIGINT
             )
         ''')
         # ایجاد جدول transactions
@@ -368,20 +433,36 @@ def init_db():
                 type TEXT,
                 created_at TEXT,
                 message_id BIGINT,
+                address TEXT,
                 FOREIGN KEY (user_id) REFERENCES users (user_id)
             )
         ''')
-        # بررسی و اضافه کردن ستون address اگر وجود ندارد
+        # ایجاد جدول referrals
         c.execute('''
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'transactions' AND column_name = 'address'
+            CREATE TABLE IF NOT EXISTS referrals (
+                id SERIAL PRIMARY KEY,
+                referrer_id BIGINT,
+                referred_id BIGINT,
+                level INTEGER,
+                FOREIGN KEY (referrer_id) REFERENCES users (user_id),
+                FOREIGN KEY (referred_id) REFERENCES users (user_id)
+            )
         ''')
-        if not c.fetchone():
-            c.execute('ALTER TABLE transactions ADD COLUMN address TEXT')
-            logger.info("Added missing 'address' column to transactions table")
-        else:
-            logger.info("Column 'address' already exists in transactions table")
+        # ایجاد جدول referral_profits
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS referral_profits (
+                id SERIAL PRIMARY KEY,
+                referrer_id BIGINT,
+                referred_id BIGINT,
+                transaction_id INTEGER,
+                level INTEGER,
+                profit_amount REAL,
+                created_at TEXT,
+                FOREIGN KEY (referrer_id) REFERENCES users (user_id),
+                FOREIGN KEY (referred_id) REFERENCES users (user_id),
+                FOREIGN KEY (transaction_id) REFERENCES transactions (id)
+            )
+        ''')
         conn.commit()
         logger.info("Database initialized successfully")
     except Exception as e:
@@ -396,7 +477,7 @@ def get_user(user_id):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
+        c.execute('SELECT language, balance, referred_by FROM users WHERE user_id = %s', (user_id,))
         user = c.fetchone()
         return user
     except Exception as e:
@@ -406,18 +487,18 @@ def get_user(user_id):
         if conn is not None:
             conn.close()
 
-def upsert_user(user_id, language='en'):
+def upsert_user(user_id, language='en', referred_by=None):
     conn = None
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
         c.execute('''
-            INSERT INTO users (user_id, language, balance)
-            VALUES (%s, %s, %s)
+            INSERT INTO users (user_id, language, balance, referred_by)
+            VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id) DO UPDATE SET language = %s
-        ''', (user_id, language, 0.0, language))
+        ''', (user_id, language, 0.0, referred_by, language))
         conn.commit()
-        logger.info(f"Upserted user {user_id} with language {language}")
+        logger.info(f"Upserted user {user_id} with language {language}, referred_by {referred_by}")
     except Exception as e:
         logger.error(f"Error upserting user {user_id}: {e}")
         raise
@@ -431,8 +512,11 @@ def update_balance(user_id, amount):
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
         c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
+        c.execute('SELECT balance FROM users WHERE user_id = %s', (user_id,))
+        new_balance = c.fetchone()[0]
         conn.commit()
-        logger.info(f"Updated balance for user {user_id}: added {amount}")
+        logger.info(f"Updated balance for user {user_id}: added {amount}, new balance {new_balance}")
+        return new_balance
     except Exception as e:
         logger.error(f"Error updating balance for user {user_id}: {e}")
         raise
@@ -445,13 +529,16 @@ def insert_transaction(user_id, amount, network, status, type, message_id, addre
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        created_at = dt.datetime.now(dt.UTC).isoformat()  # اصلاح شده
+        created_at = dt.datetime.now(dt.UTC).isoformat()
         c.execute('''
             INSERT INTO transactions (user_id, amount, network, status, type, created_at, message_id, address)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         ''', (user_id, amount, network, status, type, created_at, message_id, address))
+        transaction_id = c.fetchone()[0]
         conn.commit()
-        logger.info(f"Inserted transaction for user {user_id}: amount {amount}, network {network}, status {status}, type {type}")
+        logger.info(f"Inserted transaction for user {user_id}: amount {amount}, network {network}, status {status}, type {type}, id {transaction_id}")
+        return transaction_id
     except Exception as e:
         logger.error(f"Error inserting transaction for user {user_id}: {e}")
         raise
@@ -467,10 +554,10 @@ def update_transaction_status(transaction_id, user_id, message_id, status):
         c.execute('''
             UPDATE transactions
             SET status = %s
-            WHERE user_id = %s AND message_id = %s AND status = 'pending'
-        ''', (status, user_id, message_id))
+            WHERE id = %s AND user_id = %s AND message_id = %s AND status = 'pending'
+        ''', (status, transaction_id, user_id, message_id))
         conn.commit()
-        logger.info(f"Updated transaction status for user {user_id}, message_id {message_id} to {status}")
+        logger.info(f"Updated transaction status for user {user_id}, transaction_id {transaction_id}, message_id {message_id} to {status}")
     except Exception as e:
         logger.error(f"Error updating transaction status for user {user_id}: {e}")
         raise
@@ -478,7 +565,7 @@ def update_transaction_status(transaction_id, user_id, message_id, status):
         if conn is not None:
             conn.close()
 
-def get_transaction(user_id, message_id):
+def get_transaction(transaction_id, user_id, message_id):
     conn = None
     try:
         conn = psycopg2.connect(DATABASE_URL)
@@ -486,8 +573,8 @@ def get_transaction(user_id, message_id):
         c.execute('''
             SELECT amount, network, status, type, address
             FROM transactions
-            WHERE user_id = %s AND message_id = %s AND status = 'pending'
-        ''', (user_id, message_id))
+            WHERE id = %s AND user_id = %s AND message_id = %s AND status = 'pending'
+        ''', (transaction_id, user_id, message_id))
         transaction = c.fetchone()
         return transaction
     except Exception as e:
@@ -518,6 +605,106 @@ def get_transaction_history(user_id):
         if conn is not None:
             conn.close()
 
+def add_referral(referrer_id, referred_id, level):
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO referrals (referrer_id, referred_id, level)
+            VALUES (%s, %s, %s)
+        ''', (referrer_id, referred_id, level))
+        conn.commit()
+        logger.info(f"Added referral: referrer {referrer_id}, referred {referred_id}, level {level}")
+    except Exception as e:
+        logger.error(f"Error adding referral for referrer {referrer_id}: {e}")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+def record_referral_profit(referrer_id, referred_id, transaction_id, level, profit_amount):
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        created_at = dt.datetime.now(dt.UTC).isoformat()
+        c.execute('''
+            INSERT INTO referral_profits (referrer_id, referred_id, transaction_id, level, profit_amount, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        ''', (referrer_id, referred_id, transaction_id, level, profit_amount, created_at))
+        conn.commit()
+        logger.info(f"Recorded referral profit: referrer {referrer_id}, referred {referred_id}, profit {profit_amount}, level {level}")
+    except Exception as e:
+        logger.error(f"Error recording referral profit for referrer {referrer_id}: {e}")
+        raise
+    finally:
+        if conn is not None:
+            conn.close()
+
+def get_referral_stats(user_id):
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        # تعداد کاربران در هر سطح
+        c.execute('''
+            SELECT level, COUNT(*) 
+            FROM referrals 
+            WHERE referrer_id = %s 
+            GROUP BY level
+        ''', (user_id,))
+        level_counts = {1: 0, 2: 0, 3: 0}
+        for level, count in c.fetchall():
+            level_counts[level] = count
+        # کل سود
+        c.execute('''
+            SELECT SUM(profit_amount) 
+            FROM referral_profits 
+            WHERE referrer_id = %s
+        ''', (user_id,))
+        total_profit = c.fetchone()[0] or 0.0
+        # تاریخچه تراکنش‌های زیرمجموعه‌ها
+        c.execute('''
+            SELECT t.amount, t.network, t.status, t.type, t.created_at, r.level
+            FROM transactions t
+            JOIN referrals r ON t.user_id = r.referred_id
+            WHERE r.referrer_id = %s AND t.type = 'deposit' AND t.status = 'confirmed'
+            ORDER BY t.created_at DESC
+            LIMIT 10
+        ''', (user_id,))
+        transactions = c.fetchall()
+        return level_counts[1], level_counts[2], level_counts[3], total_profit, transactions
+    except Exception as e:
+        logger.error(f"Error getting referral stats for user {user_id}: {e}")
+        return 0, 0, 0, 0.0, []
+    finally:
+        if conn is not None:
+            conn.close()
+
+def get_referral_chain(user_id):
+    conn = None
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        c = conn.cursor()
+        chain = []
+        current_id = user_id
+        for level in range(1, 4):  # تا سطح ۳
+            c.execute('SELECT referred_by FROM users WHERE user_id = %s', (current_id,))
+            result = c.fetchone()
+            if result and result[0]:
+                chain.append((result[0], level))
+                current_id = result[0]
+            else:
+                break
+        return chain
+    except Exception as e:
+        logger.error(f"Error getting referral chain for user {user_id}: {e}")
+        return []
+    finally:
+        if conn is not None:
+            conn.close()
+
 # مقداردهی اولیه دیتابیس
 try:
     init_db()
@@ -533,23 +720,56 @@ def get_main_menu(lang):
             InlineKeyboardButton("💼 ولت من" if lang == "fa" else "💼 My Wallet", callback_data="wallet")
         ],
         [
-            InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language"),
+            InlineKeyboardButton("🤝 دعوت دوستان" if lang == "fa" else "🤝 Invite Friends", callback_data="referral"),
+            InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")
+        ],
+        [
             InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")
+        ]
+    ])
+
+def get_referral_menu(lang):
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")
         ]
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    logger.info(f"User {user_id} called /start")
+    args = context.args
+    logger.info(f"User {user_id} called /start with args: {args}")
     
-    # پاک‌سازی داده‌های قبلی کاربر
     context.user_data.clear()
     
-    # تنظیم زبان پیش‌فرض انگلیسی برای کاربران جدید
+    referred_by = None
+    if args and args[0].startswith("ref_"):
+        try:
+            referred_by = int(args[0].split("_")[1])
+            if referred_by == user_id:
+                referred_by = None  # جلوگیری از رفرال به خود
+        except (IndexError, ValueError):
+            logger.warning(f"Invalid referral code for user {user_id}: {args[0]}")
+    
     user = get_user(user_id)
     lang = user[0] if user else "en"
     if not user:
-        upsert_user(user_id, language="en")
+        try:
+            upsert_user(user_id, language="en", referred_by=referred_by)
+            if referred_by:
+                # ثبت رفرال‌ها تا سطح ۳
+                add_referral(referred_by, user_id, 1)
+                chain = get_referral_chain(referred_by)
+                for referrer_id, level in chain:
+                    if level < 3:  # تا سطح ۲ برای زیرمجموعه‌ها
+                        add_referral(referrer_id, user_id, level + 1)
+        except Exception as e:
+            logger.error(f"Error creating user {user_id}: {e}")
+            await update.message.reply_text(
+                messages[lang]["db_error"],
+                parse_mode="Markdown"
+            )
+            return ConversationHandler.END
     
     await update.message.reply_text(
         messages[lang]["welcome"],
@@ -661,6 +881,53 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
                 ])
             )
+            return ConversationHandler.END
+
+        elif query.data == "referral":
+            level1, level2, level3, total_profit, transactions = get_referral_stats(user_id)
+            bot_username = (await context.bot.get_me()).username
+            referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+            
+            if level1 == 0 and level2 == 0 and level3 == 0:
+                await query.message.reply_text(
+                    messages[lang]["no_referrals"](referral_link),
+                    parse_mode="Markdown",
+                    reply_markup=get_referral_menu(lang)
+                )
+            else:
+                transaction_text = ""
+                status_map = {
+                    "confirmed": ("✅ تأییدشده", "✅ Confirmed")
+                }
+                type_map = {
+                    "deposit": ("واریز", "Deposit")
+                }
+                for amount, network, status, type, created_at, level in transactions:
+                    status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
+                    type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
+                    transaction_text += (
+                        f"💰 *{type_text}*: `{amount}` تتر\n"
+                        f"📲 *شبکه*: {network}\n"
+                        f"📅 *وضعیت*: {status_text}\n"
+                        f"📊 *سطح*: {level}\n"
+                        f"⏰ *زمان*: {created_at}\n"
+                        f"────────────────────\n"
+                    ) if lang == "fa" else (
+                        f"💰 *{type_text}*: `{amount}` USDT\n"
+                        f"📲 *Network*: {network}\n"
+                        f"📅 *Status*: {status_text}\n"
+                        f"📊 *Level*: {level}\n"
+                        f"⏰ *Time*: {created_at}\n"
+                        f"────────────────────\n"
+                    )
+                if not transaction_text:
+                    transaction_text = "📜 بدون تراکنش" if lang == "fa" else "📜 No transactions"
+
+                await query.message.reply_text(
+                    messages[lang]["referral_info"](referral_link, level1, level2, level3, total_profit, transaction_text),
+                    parse_mode="Markdown",
+                    reply_markup=get_referral_menu(lang)
+                )
             return ConversationHandler.END
 
         elif query.data == "language":
@@ -825,7 +1092,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
 
     admin_id = int(admin_id)
     amount = context.user_data.get("amount")
-    network = context.user_data.get("network", "Unknown")
+    network = context.user_data.get("network")
 
     if not amount or amount <= 0 or not network:
         logger.error(f"Invalid data for user {user_id}: amount={amount}, network={network}")
@@ -838,7 +1105,6 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
     try:
-        # فوروارد پیام به ادمین
         logger.info(f"Attempting to forward message {message_id} to admin {admin_id}")
         await context.bot.forward_message(
             chat_id=admin_id,
@@ -847,11 +1113,9 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         logger.info(f"Message {message_id} forwarded to admin {admin_id}")
 
-        # ثبت تراکنش در دیتابیس
-        insert_transaction(user_id, amount, network, "pending", "deposit", message_id)
-        logger.info(f"Transaction recorded for user {user_id}")
+        transaction_id = insert_transaction(user_id, amount, network, "pending", "deposit", message_id)
+        logger.info(f"Transaction recorded for user {user_id}, transaction_id: {transaction_id}")
 
-        # ارسال پیام به ادمین
         logger.info(f"Attempting to send notification to admin {admin_id}")
         await context.bot.send_message(
             chat_id=admin_id,
@@ -869,14 +1133,13 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✅ تأیید", callback_data=f"confirm_deposit_{user_id}_{message_id}"),
-                    InlineKeyboardButton("❌ رد", callback_data=f"reject_deposit_{user_id}_{message_id}")
+                    InlineKeyboardButton("✅ تأیید", callback_data=f"confirm_deposit_{user_id}_{message_id}_{transaction_id}"),
+                    InlineKeyboardButton("❌ رد", callback_data=f"reject_deposit_{user_id}_{message_id}_{transaction_id}")
                 ]
             ])
         )
         logger.info(f"Notification sent to admin {admin_id}")
 
-        # ارسال پیام موفقیت به کاربر
         await update.message.reply_text(
             messages[lang]["success"],
             parse_mode="Markdown",
@@ -908,7 +1171,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logger.error(f"Unexpected error in receive_deposit_txid for user {user_id}: {e}")
         await update.message.reply_text(
-            messages[lang]["admin_error"],
+            messages[lang]["error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
@@ -993,7 +1256,6 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         return ConversationHandler.END
 
     try:
-        # فوروارد پیام به ادمین
         logger.info(f"Attempting to forward message {message_id} to admin {admin_id}")
         await context.bot.forward_message(
             chat_id=admin_id,
@@ -1002,11 +1264,9 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         )
         logger.info(f"Message {message_id} forwarded to admin {admin_id}")
 
-        # ثبت تراکنش در دیتابیس
-        insert_transaction(user_id, amount, "Unknown", "pending", "withdrawal", message_id, address)
-        logger.info(f"Withdrawal transaction recorded for user {user_id}")
+        transaction_id = insert_transaction(user_id, amount, "Unknown", "pending", "withdrawal", message_id, address)
+        logger.info(f"Withdrawal transaction recorded for user {user_id}, transaction_id: {transaction_id}")
 
-        # ارسال پیام به ادمین
         logger.info(f"Attempting to send notification to admin {admin_id}")
         await context.bot.send_message(
             chat_id=admin_id,
@@ -1024,14 +1284,13 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("✅ تأیید", callback_data=f"confirm_withdrawal_{user_id}_{message_id}"),
-                    InlineKeyboardButton("❌ رد", callback_data=f"reject_withdrawal_{user_id}_{message_id}")
+                    InlineKeyboardButton("✅ تأیید", callback_data=f"confirm_withdrawal_{user_id}_{message_id}_{transaction_id}"),
+                    InlineKeyboardButton("❌ رد", callback_data=f"reject_withdrawal_{user_id}_{message_id}_{transaction_id}")
                 ]
             ])
         )
         logger.info(f"Notification sent to admin {admin_id}")
 
-        # ارسال پیام موفقیت به کاربر
         await update.message.reply_text(
             messages[lang]["withdraw_success"],
             parse_mode="Markdown",
@@ -1063,7 +1322,7 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
     except Exception as e:
         logger.error(f"Unexpected error in receive_withdraw_address for user {user_id}: {e}")
         await update.message.reply_text(
-            messages[lang]["admin_error"],
+            messages[lang]["error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
@@ -1092,9 +1351,10 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         try:
-            action, type, user_id, message_id = query.data.split("_")
+            action, type, user_id, message_id, transaction_id = query.data.split("_")
             user_id = int(user_id)
             message_id = int(message_id)
+            transaction_id = int(transaction_id)
         except ValueError as e:
             logger.error(f"Error parsing callback_data: {query.data}, error: {e}")
             await query.message.reply_text(
@@ -1103,7 +1363,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return
 
-        transaction = get_transaction(user_id, message_id)
+        transaction = get_transaction(transaction_id, user_id, message_id)
         if not transaction:
             await query.message.reply_text(
                 messages["en"]["error"],
@@ -1118,35 +1378,54 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         try:
             if action == "confirm":
                 if type == "deposit":
-                    update_balance(user_id, amount)
-                    update_transaction_status(None, user_id, message_id, "confirmed")
-                    user = get_user(user_id)
-                    balance = user[1] if user else 0
+                    new_balance = update_balance(user_id, amount)
+                    update_transaction_status(transaction_id, user_id, message_id, "confirmed")
+                    # محاسبه سود رفرال
+                    referral_rates = {1: 0.05, 2: 0.03, 3: 0.01}  # ۵٪، ۳٪، ۱٪
+                    conn = psycopg2.connect(DATABASE_URL)
+                    c = conn.cursor()
+                    c.execute('''
+                        SELECT referrer_id, level 
+                        FROM referrals 
+                        WHERE referred_id = %s
+                    ''', (user_id,))
+                    referrals = c.fetchall()
+                    conn.close()
+                    for referrer_id, level in referrals:
+                        if level in referral_rates:
+                            profit = amount * referral_rates[level]
+                            update_balance(referrer_id, profit)
+                            record_referral_profit(referrer_id, user_id, transaction_id, level, profit)
+                            user_lang = get_user(referrer_id)[0] if get_user(referrer_id) else "en"
+                            await context.bot.send_message(
+                                chat_id=referrer_id,
+                                text=messages[user_lang]["referral_profit"](profit, level, user_id),
+                                parse_mode="Markdown"
+                            )
+
                     await context.bot.send_message(
                         chat_id=user_id,
                         text=messages[user_lang_id]["confirmed"],
                         parse_mode="Markdown"
                     )
                     await query.message.reply_text(
-                        f"✅ *تراکنش واریز تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}\nموجودی جدید: {balance} تتر",
+                        f"✅ *تراکنش واریز تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nشبکه: {network}\nموجودی جدید: {new_balance} تتر",
                         parse_mode="Markdown"
                     )
                 elif type == "withdrawal":
-                    update_balance(user_id, -amount)
-                    update_transaction_status(None, user_id, message_id, "confirmed")
-                    user = get_user(user_id)
-                    balance = user[1] if user else 0
+                    new_balance = update_balance(user_id, -amount)
+                    update_transaction_status(transaction_id, user_id, message_id, "confirmed")
                     await context.bot.send_message(
                         chat_id=user_id,
                         text=messages[user_lang_id]["withdraw_confirmed"],
                         parse_mode="Markdown"
                     )
                     await query.message.reply_text(
-                        f"✅ *تراکنش برداشت تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nآدرس: {address}\nموجودی جدید: {balance} تتر",
+                        f"✅ *تراکنش برداشت تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nآدرس: {address}\nموجودی جدید: {new_balance} تتر",
                         parse_mode="Markdown"
                     )
             else:  # reject
-                update_transaction_status(None, user_id, message_id, "rejected")
+                update_transaction_status(transaction_id, user_id, message_id, "rejected")
                 await context.bot.send_message(
                     chat_id=user_id,
                     text=messages[user_lang_id]["rejected"] if type == "deposit" else messages[user_lang_id]["withdraw_rejected"],
@@ -1223,17 +1502,25 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_count = c.fetchone()[0]
         c.execute('SELECT COUNT(*) FROM transactions')
         transaction_count = c.fetchone()[0]
+        c.execute('SELECT COUNT(*) FROM referrals')
+        referral_count = c.fetchone()[0]
+        c.execute('SELECT COUNT(*) FROM referral_profits')
+        profit_count = c.fetchone()[0]
         conn.close()
         await update.message.reply_text(
             f"🛠 *وضعیت دیتابیس*\n"
             f"────────────────────\n"
             f"👤 *تعداد کاربران*: {user_count}\n"
             f"📝 *تعداد تراکنش‌ها*: {transaction_count}\n"
+            f"🤝 *تعداد رفرال‌ها*: {referral_count}\n"
+            f"💰 *تعداد سودهای رفرال*: {profit_count}\n"
             f"────────────────────" if lang == "fa" else
             f"🛠 *Database Status*\n"
             f"────────────────────\n"
             f"👤 *Number of Users*: {user_count}\n"
             f"📝 *Number of Transactions*: {transaction_count}\n"
+            f"🤝 *Number of Referrals*: {referral_count}\n"
+            f"💰 *Number of Referral Profits*: {profit_count}\n"
             f"────────────────────",
             parse_mode="Markdown"
         )
@@ -1336,7 +1623,7 @@ if __name__ == '__main__':
     conv = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
-            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw|wallet|history|language|lang_|support|back_to_menu)$")
+            CallbackQueryHandler(handle_menu_callback, pattern="^(deposit|withdraw|wallet|history|referral|language|lang_|support|back_to_menu)$")
         ],
         states={
             DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],
@@ -1351,8 +1638,7 @@ if __name__ == '__main__':
         ]
     )
 
-    # ترتیب هندلرها
-    app.add_handler(CommandHandler('start', start))  # هندلر جداگانه برای اطمینان از اجرای /start
+    app.add_handler(CommandHandler('start', start))
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
     app.add_handler(CommandHandler("debug", debug))
