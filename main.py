@@ -564,6 +564,7 @@ def get_transaction_history(user_id):
                     FROM transactions
                     WHERE user_id = %s
                     ORDER BY created_at DESC
+                    LIMIT 10
                 ''', (user_id,))
                 transactions = c.fetchall()
                 logger.info(f"Retrieved {len(transactions)} transactions for user {user_id}")
@@ -750,6 +751,7 @@ async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT
                 return ConversationHandler.END
             upsert_user(user_id, language=new_lang)
             logger.info(f"Language updated for user {user_id} to {new_lang}")
+            context.user_data.clear()
             await query.message.reply_text(
                 messages[new_lang]["language_updated"],
                 parse_mode="Markdown",
@@ -771,6 +773,7 @@ async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
 async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -784,6 +787,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         if query.data == "deposit":
+            context.user_data.clear()
             await query.message.reply_text(
                 messages[lang]["ask_amount"],
                 parse_mode="Markdown",
@@ -822,6 +826,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
 
         elif query.data == "withdraw":
+            context.user_data.clear()
             await query.message.reply_text(
                 messages[lang]["ask_withdraw_amount"],
                 parse_mode="Markdown",
@@ -832,99 +837,117 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             return WITHDRAW_AMOUNT
 
         elif query.data == "history":
-            transactions = get_transaction_history(user_id)
-            if not transactions:
-                await query.message.reply_text(
-                    messages[lang]["no_history"],
-                    parse_mode="Markdown",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
-                    ])
-                )
-                return ConversationHandler.END
+            try:
+                transactions = get_transaction_history(user_id)
+                if not transactions:
+                    await query.message.reply_text(
+                        messages[lang]["no_history"],
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                        ])
+                    )
+                    return ConversationHandler.END
 
-            transaction_text = ""
-            status_map = {
-                "pending": ("⏳ در انتظار", "⏳ Pending"),
-                "confirmed": ("✅ تأییدشده", "✅ Confirmed"),
-                "rejected": ("❌ ردشده", "❌ Rejected")
-            }
-            type_map = {
-                "deposit": ("واریز", "Deposit"),
-                "withdrawal": ("برداشت", "Withdrawal")
-            }
-            for amount, network, status, type, created_at in transactions:
-                status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
-                type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
-                transaction_text += (
-                    f"💰 *{type_text}*: `{amount}` تتر\n"
-                    f"📲 *شبکه*: {network}\n"
-                    f"📅 *وضعیت*: {status_text}\n"
-                    f"⏰ *زمان*: {created_at}\n"
-                    f"────────────────────\n"
-                ) if lang == "fa" else (
-                    f"💰 *{type_text}*: `{amount}` USDT\n"
-                    f"📲 *Network*: {network}\n"
-                    f"📅 *Status*: {status_text}\n"
-                    f"⏰ *Time*: {created_at}\n"
-                    f"────────────────────\n"
-                )
-
-            await query.message.reply_text(
-                messages[lang]["history"](transaction_text),
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
-                ])
-            )
-            return ConversationHandler.END
-
-        elif query.data == "referral":
-            level1, level2, level3, total_profit, transactions = get_referral_stats(user_id)
-            bot_username = (await context.bot.get_me()).username
-            referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
-            
-            if level1 == 0 and level2 == 0 and level3 == 0:
-                await query.message.reply_text(
-                    messages[lang]["no_referrals"].replace("YOUR_LINK_WILL_BE_HERE", referral_link),
-                    parse_mode="Markdown",
-                    reply_markup=get_referral_menu(lang)
-                )
-            else:
                 transaction_text = ""
                 status_map = {
-                    "confirmed": ("✅ تأییدشده", "✅ Confirmed")
+                    "pending": ("⏳ در انتظار", "⏳ Pending"),
+                    "confirmed": ("✅ تأییدشده", "✅ Confirmed"),
+                    "rejected": ("❌ ردشده", "❌ Rejected")
                 }
                 type_map = {
-                    "deposit": ("واریز", "Deposit")
+                    "deposit": ("واریز", "Deposit"),
+                    "withdrawal": ("برداشت", "Withdrawal")
                 }
-                for amount, network, status, type, created_at, level in transactions:
+                for amount, network, status, type, created_at in transactions:
                     status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
                     type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
                     transaction_text += (
                         f"💰 *{type_text}*: `{amount}` تتر\n"
                         f"📲 *شبکه*: {network}\n"
                         f"📅 *وضعیت*: {status_text}\n"
-                        f"📊 *سطح*: {level}\n"
                         f"⏰ *زمان*: {created_at}\n"
                         f"────────────────────\n"
                     ) if lang == "fa" else (
                         f"💰 *{type_text}*: `{amount}` USDT\n"
                         f"📲 *Network*: {network}\n"
                         f"📅 *Status*: {status_text}\n"
-                        f"📊 *Level*: {level}\n"
                         f"⏰ *Time*: {created_at}\n"
                         f"────────────────────\n"
                     )
-                if not transaction_text:
-                    transaction_text = "📜 بدون تراکنش" if lang == "fa" else "📜 No transactions"
 
                 await query.message.reply_text(
-                    messages[lang]["referral_info"](referral_link, level1, level2, level3, total_profit, transaction_text),
+                    messages[lang]["history"](transaction_text),
                     parse_mode="Markdown",
-                    reply_markup=get_referral_menu(lang)
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                    ])
                 )
-            return ConversationHandler.END
+                return ConversationHandler.END
+            except Exception as e:
+                logger.error(f"Error retrieving history for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["db_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+
+        elif query.data == "referral":
+            try:
+                level1, level2, level3, total_profit, transactions = get_referral_stats(user_id)
+                bot_username = (await context.bot.get_me()).username
+                referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+                
+                if level1 == 0 and level2 == 0 and level3 == 0:
+                    await query.message.reply_text(
+                        messages[lang]["no_referrals"].replace("YOUR_LINK_WILL_BE_HERE", referral_link),
+                        parse_mode="Markdown",
+                        reply_markup=get_referral_menu(lang)
+                    )
+                else:
+                    transaction_text = ""
+                    status_map = {
+                        "confirmed": ("✅ تأییدشده", "✅ Confirmed")
+                    }
+                    type_map = {
+                        "deposit": ("واریز", "Deposit")
+                    }
+                    for amount, network, status, type, created_at, level in transactions:
+                        status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
+                        type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
+                        transaction_text += (
+                            f"💰 *{type_text}*: `{amount}` تتر\n"
+                            f"📲 *شبکه*: {network}\n"
+                            f"📅 *وضعیت*: {status_text}\n"
+                            f"📊 *سطح*: {level}\n"
+                            f"⏰ *زمان*: {created_at}\n"
+                            f"────────────────────\n"
+                        ) if lang == "fa" else (
+                            f"💰 *{type_text}*: `{amount}` USDT\n"
+                            f"📲 *Network*: {network}\n"
+                            f"📅 *Status*: {status_text}\n"
+                            f"📊 *Level*: {level}\n"
+                            f"⏰ *Time*: {created_at}\n"
+                            f"────────────────────\n"
+                        )
+                    if not transaction_text:
+                        transaction_text = "📜 بدون تراکنش" if lang == "fa" else "📜 No transactions"
+
+                    await query.message.reply_text(
+                        messages[lang]["referral_info"](referral_link, level1, level2, level3, total_profit, transaction_text),
+                        parse_mode="Markdown",
+                        reply_markup=get_referral_menu(lang)
+                    )
+                return ConversationHandler.END
+            except Exception as e:
+                logger.error(f"Error retrieving referral stats for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
 
         elif query.data == "language":
             await query.message.reply_text(
@@ -959,6 +982,15 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return ConversationHandler.END
 
+        else:
+            logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+
     except Exception as e:
         logger.error(f"Error in handle_menu_callback for user {user_id}: {e}")
         await query.message.reply_text(
@@ -966,6 +998,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
 async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1016,6 +1049,7 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
 async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1051,6 +1085,14 @@ async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_T
                 reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
+        else:
+            logger.warning(f"Invalid network callback data for user {user_id}: {query.data}")
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
     except Exception as e:
         logger.error(f"Error in handle_deposit_network for user {user_id}: {e}")
         await query.message.reply_text(
@@ -1058,6 +1100,7 @@ async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
 async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1211,6 +1254,7 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
 async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1610,6 +1654,7 @@ async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAUL
         parse_mode="Markdown",
         reply_markup=get_main_menu(lang)
     )
+    context.user_data.clear()
     return ConversationHandler.END
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1624,6 +1669,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
 
 if __name__ == '__main__':
     TOKEN = os.getenv("BOT_TOKEN")
