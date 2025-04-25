@@ -1267,7 +1267,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"👤 *کاربر*: {update.effective_user.first_name} ({user_id})\n"
                 f"🌐 *زبان*: {lang}\n"
                 f"💰 *مقدار*: {amount} تتر\n"
-                f"📲 *شبکه*: {network_display}\n"
+                f"📲 *شبکه*: {network}\n"
                 f"⏰ *زمان*: {update.message.date}\n"
                 f"────────────────────\n"
                 f"✅ لطفاً وضعیت تراکنش را مشخص کنید:"
