@@ -7,6 +7,7 @@ from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKe
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 import telegram.error
 import uuid
+import asyncio
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -207,6 +208,13 @@ messages = {
             "هنوز هیچ کاربری از طریق شما دعوت نشده است.\n"
             f"🔗 *لینک دعوت شما*: `YOUR_LINK_WILL_BE_HERE`\n"
             f"📌 لینک خود را به اشتراک بگذارید تا سود کسب کنید!"
+        ),
+        "profit_credited": lambda amount, period: (
+            f"🎉 *سود سرمایه‌گذاری واریز شد!*\n"
+            f"💰 *مقدار*: `{amount}` تتر\n"
+            f"📅 *دوره*: {period}\n"
+            f"────────────────────\n"
+            f"📌 برای مشاهده موجودی، به بخش ولت من بروید."
         )
     },
     "en": {
@@ -390,6 +398,13 @@ messages = {
             "You haven't invited any users yet.\n"
             f"🔗 *Your Referral Link*: `YOUR_LINK_WILL_BE_HERE`\n"
             f"📌 Share your link to start earning!"
+        ),
+        "profit_credited": lambda amount, period: (
+            f"🎉 *Investment Profit Credited!*\n"
+            f"💰 *Amount*: `{amount}` USDT\n"
+            f"📅 *Period*: {period}\n"
+            f"────────────────────\n"
+            f"📌 Check your balance in the My Wallet section."
         )
     }
 }
@@ -457,6 +472,16 @@ def init_db():
                         FOREIGN KEY (transaction_id) REFERENCES transactions (id)
                     )
                 ''')
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS profits (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT,
+                        amount REAL,
+                        period TEXT,
+                        created_at TEXT,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id)
+                    )
+                ''')
                 conn.commit()
                 logger.info("Database initialized successfully")
     except Exception as e:
@@ -520,6 +545,22 @@ def insert_transaction(user_id, amount, network, status, type, message_id, addre
                 return transaction_id
     except Exception as e:
         logger.error(f"Error inserting transaction for user {user_id}: {e}")
+        raise
+
+def insert_profit(user_id, amount, period):
+    """Insert a profit record into the database."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                created_at = dt.datetime.now(dt.UTC).isoformat()
+                c.execute('''
+                    INSERT INTO profits (user_id, amount, period, created_at)
+                    VALUES (%s, %s, %s, %s)
+                ''', (user_id, amount, period, created_at))
+                conn.commit()
+                logger.info(f"Inserted profit for user {user_id}: amount {amount}, period {period}")
+    except Exception as e:
+        logger.error(f"Error inserting profit for user {user_id}: {e}")
         raise
 
 def update_transaction_status(transaction_id, user_id, message_id, status):
@@ -688,6 +729,27 @@ def get_referral_menu(lang):
             InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")
         ]
     ])
+
+async def distribute_profits(context: ContextTypes.DEFAULT_TYPE):
+    """Distribute daily profits to users with positive balances."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT user_id, balance, language FROM users WHERE balance > 0')
+                users = c.fetchall()
+                for user_id, balance, lang in users:
+                    profit = round(balance * 0.5 / 30, 2)  # Daily profit (0.5% monthly / 30)
+                    if profit > 0:
+                        update_balance(user_id, profit)
+                        insert_profit(user_id, profit, "Daily")
+                        await context.bot.send_message(
+                            chat_id=user_id,
+                            text=messages[lang]["profit_credited"](profit, "روزانه" if lang == "fa" else "Daily"),
+                            parse_mode="Markdown"
+                        )
+                        logger.info(f"Credited {profit} USDT daily profit to user {user_id}")
+    except Exception as e:
+        logger.error(f"Error distributing profits: {e}")
 
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1567,6 +1629,8 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 referral_count = c.fetchone()[0]
                 c.execute('SELECT COUNT(*) FROM referral_profits')
                 profit_count = c.fetchone()[0]
+                c.execute('SELECT COUNT(*) FROM profits')
+                profit_records = c.fetchone()[0]
         await update.message.reply_text(
             f"🛠 *وضعیت دیتابیس*\n"
             f"────────────────────\n"
@@ -1574,6 +1638,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 *تعداد تراکنش‌ها*: {transaction_count}\n"
             f"🤝 *تعداد رفرال‌ها*: {referral_count}\n"
             f"💰 *تعداد سودهای رفرال*: {profit_count}\n"
+            f"💸 *تعداد سودهای سرمایه‌گذاری*: {profit_records}\n"
             f"────────────────────" if lang == "fa" else
             f"🛠 *Database Status*\n"
             f"────────────────────\n"
@@ -1581,6 +1646,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 *Number of Transactions*: {transaction_count}\n"
             f"🤝 *Number of Referrals*: {referral_count}\n"
             f"💰 *Number of Referral Profits*: {profit_count}\n"
+            f"💸 *Number of Investment Profits*: {profit_records}\n"
             f"────────────────────",
             parse_mode="Markdown"
         )
