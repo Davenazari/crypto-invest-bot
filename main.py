@@ -177,7 +177,7 @@ messages = {
         "unexpected_message": (
             "⚠️ *پیام نامعتبر*\n"
             "لطفاً از دکمه‌های منو استفاده کنید یا مقدار معتبری وارد کنید.\n"
-            "برای بازگشت به منوی اصلی_EXISTING_CODE_HERE_ /start را وارد کنید."
+            "برای بازگشت به منوی اصلی، /start را وارد کنید."
         ),
         "invalid_data": (
             "⚠️ *داده نامعتبر!*\n"
@@ -1506,7 +1506,7 @@ async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
-        logger.error(f"Invalid or missing ADMIN_ID in test_admin: {admin_id}")
+        logger.error(f"Invalid or missing ADMIN_ID: {admin_id}")
         await update.message.reply_text("Invalid ADMIN_ID configuration", parse_mode="Markdown")
         return
 
@@ -1714,5 +1714,5 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("reset_db", reset_db))
     app.add_error_handler(error_handler)
 
-    glogger.info("🚀 Starting bot polling...")
+    logger.info("🚀 Starting bot polling...")
     app.run_polling()
