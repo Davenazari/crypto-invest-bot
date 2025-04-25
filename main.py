@@ -242,7 +242,12 @@ messages = {
             "Please choose the network for your deposit:\n"
             "👇 Choose one of the options below 👇"
         ),
-        "wallet": lambda network, address烈
+        "wallet": lambda network, address: (
+            f"✅ *{network} Wallet Address*\n"
+            f"Please make your deposit to this address:\n"
+            f"📋 `{address}`\n"
+            f"⚠️ *Note*: Only use the *{network}* network!"
+        )
 
 # Wallet addresses for deposits
 wallet_addresses = {
