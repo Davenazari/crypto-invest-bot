@@ -6,22 +6,25 @@ import datetime as dt
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
 import telegram.error
+import uuid
 
-# تنظیم لاگ‌گیری
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# تعریف مراحل برای ConversationHandler
+# ConversationHandler states
 DEPOSIT_AMOUNT, DEPOSIT_NETWORK, DEPOSIT_TXID, WITHDRAW_AMOUNT, WITHDRAW_ADDRESS = range(5)
 
-# تنظیم پیش‌فرض ADMIN_ID
+# Default admin ID
 DEFAULT_ADMIN_ID = "536587863"
 
+# Supported languages
 langs = {
     "فارسی": "fa",
     "English": "en"
 }
 
+# Localized messages
 messages = {
     "fa": {
         "welcome": (
@@ -391,320 +394,279 @@ messages = {
     }
 }
 
+# Wallet addresses for deposits
 wallet_addresses = {
     "TRC20": "TXExampleTRC20Wallet123",
     "BEP20": "0xExampleBEP20Wallet456"
 }
 
-# توابع مدیریت دیتابیس
+# Database configuration
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     logger.error("DATABASE_URL not found in environment variables")
     exit(1)
 
+# Database initialization
 def init_db():
-    conn = None
+    """Initialize database tables."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        # آپدیت جدول users با ستون referred_by
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY,
-                language TEXT DEFAULT 'en',
-                balance REAL DEFAULT 0.0,
-                referred_by BIGINT
-            )
-        ''')
-        # جدول transactions
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS transactions (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT,
-                amount REAL,
-                network TEXT,
-                status TEXT,
-                type TEXT,
-                created_at TEXT,
-                message_id BIGINT,
-                address TEXT,
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
-            )
-        ''')
-        # جدول referrals
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS referrals (
-                id SERIAL PRIMARY KEY,
-                referrer_id BIGINT,
-                referred_id BIGINT,
-                level INTEGER,
-                FOREIGN KEY (referrer_id) REFERENCES users (user_id),
-                FOREIGN KEY (referred_id) REFERENCES users (user_id)
-            )
-        ''')
-        # جدول referral_profits
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS referral_profits (
-                id SERIAL PRIMARY KEY,
-                referrer_id BIGINT,
-                referred_id BIGINT,
-                transaction_id INTEGER,
-                level INTEGER,
-                profit_amount REAL,
-                created_at TEXT,
-                FOREIGN KEY (referrer_id) REFERENCES users (user_id),
-                FOREIGN KEY (referred_id) REFERENCES users (user_id),
-                FOREIGN KEY (transaction_id) REFERENCES transactions (id)
-            )
-        ''')
-        conn.commit()
-        logger.info("Database initialized successfully")
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id BIGINT PRIMARY KEY,
+                        language TEXT DEFAULT 'en',
+                        balance REAL DEFAULT 0.0,
+                        referred_by BIGINT
+                    )
+                ''')
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS transactions (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT,
+                        amount REAL,
+                        network TEXT,
+                        status TEXT,
+                        type TEXT,
+                        created_at TEXT,
+                        message_id BIGINT,
+                        address TEXT,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id)
+                    )
+                ''')
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS referrals (
+                        id SERIAL PRIMARY KEY,
+                        referrer_id BIGINT,
+                        referred_id BIGINT,
+                        level INTEGER,
+                        FOREIGN KEY (referrer_id) REFERENCES users (user_id),
+                        FOREIGN KEY (referred_id) REFERENCES users (user_id)
+                    )
+                ''')
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS referral_profits (
+                        id SERIAL PRIMARY KEY,
+                        referrer_id BIGINT,
+                        referred_id BIGINT,
+                        transaction_id INTEGER,
+                        level INTEGER,
+                        profit_amount REAL,
+                        created_at TEXT,
+                        FOREIGN KEY (referrer_id) REFERENCES users (user_id),
+                        FOREIGN KEY (referred_id) REFERENCES users (user_id),
+                        FOREIGN KEY (transaction_id) REFERENCES transactions (id)
+                    )
+                ''')
+                conn.commit()
+                logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}")
         raise
-    finally:
-        if conn is not None:
-            conn.close()
 
+# Database helper functions
 def get_user(user_id):
-    conn = None
+    """Retrieve user data from database."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('SELECT language, balance, referred_by FROM users WHERE user_id = %s', (user_id,))
-        user = c.fetchone()
-        return user
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT language, balance, referred_by FROM users WHERE user_id = %s', (user_id,))
+                return c.fetchone()
     except Exception as e:
         logger.error(f"Error getting user {user_id}: {e}")
         return None
-    finally:
-        if conn is not None:
-            conn.close()
 
 def upsert_user(user_id, language='en', referred_by=None):
-    conn = None
+    """Insert or update user in database."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO users (user_id, language, balance, referred_by)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET language = %s
-        ''', (user_id, language, 0.0, referred_by, language))
-        conn.commit()
-        logger.info(f"Upserted user {user_id} with language {language}, referred_by {referred_by}")
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    INSERT INTO users (user_id, language, balance, referred_by)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET language = %s
+                ''', (user_id, language, 0.0, referred_by, language))
+                conn.commit()
+                logger.info(f"Upserted user {user_id} with language {language}, referred_by {referred_by}")
     except Exception as e:
         logger.error(f"Error upserting user {user_id}: {e}")
         raise
-    finally:
-        if conn is not None:
-            conn.close()
 
 def update_balance(user_id, amount):
-    conn = None
+    """Update user balance."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
-        conn.commit()
-        logger.info(f"Updated balance for user {user_id}: added {amount}")
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
+                conn.commit()
+                logger.info(f"Updated balance for user {user_id}: added {amount}")
     except Exception as e:
         logger.error(f"Error updating balance for user {user_id}: {e}")
         raise
-    finally:
-        if conn is not None:
-            conn.close()
 
 def insert_transaction(user_id, amount, network, status, type, message_id, address=None):
-    conn = None
+    """Insert a transaction into the database."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        created_at = dt.datetime.now(dt.UTC).isoformat()
-        c.execute('''
-            INSERT INTO transactions (user_id, amount, network, status, type, created_at, message_id, address)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-        ''', (user_id, amount, network, status, type, created_at, message_id, address))
-        transaction_id = c.fetchone()[0]
-        conn.commit()
-        logger.info(f"Inserted transaction for user {user_id}: amount {amount}, network {network}, status {status}, type {type}, id {transaction_id}")
-        return transaction_id
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                created_at = dt.datetime.now(dt.UTC).isoformat()
+                c.execute('''
+                    INSERT INTO transactions (user_id, amount, network, status, type, created_at, message_id, address)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                ''', (user_id, amount, network, status, type, created_at, message_id, address))
+                transaction_id = c.fetchone()[0]
+                conn.commit()
+                logger.info(f"Inserted transaction for user {user_id}: amount {amount}, network {network}, status {status}, type {type}, id {transaction_id}")
+                return transaction_id
     except Exception as e:
         logger.error(f"Error inserting transaction for user {user_id}: {e}")
         raise
-    finally:
-        if conn is not None:
-            conn.close()
 
 def update_transaction_status(transaction_id, user_id, message_id, status):
-    conn = None
+    """Update transaction status."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('''
-            UPDATE transactions
-            SET status = %s
-            WHERE user_id = %s AND message_id = %s AND status = 'pending'
-        ''', (status, user_id, message_id))
-        conn.commit()
-        logger.info(f"Updated transaction status for user {user_id}, message_id {message_id} to {status}")
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    UPDATE transactions
+                    SET status = %s
+                    WHERE user_id = %s AND message_id = %s AND status = 'pending'
+                ''', (status, user_id, message_id))
+                conn.commit()
+                logger.info(f"Updated transaction status for user {user_id}, message_id {message_id} to {status}")
     except Exception as e:
         logger.error(f"Error updating transaction status for user {user_id}: {e}")
         raise
-    finally:
-        if conn is not None:
-            conn.close()
 
 def get_transaction(user_id, message_id):
-    conn = None
+    """Retrieve a transaction."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('''
-            SELECT amount, network, status, type, address
-            FROM transactions
-            WHERE user_id = %s AND message_id = %s AND status = 'pending'
-        ''', (user_id, message_id))
-        transaction = c.fetchone()
-        return transaction
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    SELECT amount, network, status, type, address
+                    FROM transactions
+                    WHERE user_id = %s AND message_id = %s AND status = 'pending'
+                ''', (user_id, message_id))
+                return c.fetchone()
     except Exception as e:
         logger.error(f"Error getting transaction for user {user_id}: {e}")
         return None
-    finally:
-        if conn is not None:
-            conn.close()
 
 def get_transaction_history(user_id):
-    conn = None
+    """Retrieve transaction history for a user."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('''
-            SELECT amount, network, status, type, created_at
-            FROM transactions
-            WHERE user_id = %s
-            ORDER BY created_at DESC
-        ''', (user_id,))
-        transactions = c.fetchall()
-        logger.info(f"Retrieved {len(transactions)} transactions for user {user_id}")
-        return transactions
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    SELECT amount, network, status, type, created_at
+                    FROM transactions
+                    WHERE user_id = %s
+                    ORDER BY created_at DESC
+                ''', (user_id,))
+                transactions = c.fetchall()
+                logger.info(f"Retrieved {len(transactions)} transactions for user {user_id}")
+                return transactions
     except Exception as e:
         logger.error(f"Error getting transaction history for user {user_id}: {e}")
         return []
-    finally:
-        if conn is not None:
-            conn.close()
 
 def add_referral(referrer_id, referred_id, level):
-    conn = None
+    """Add a referral entry."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO referrals (referrer_id, referred_id, level)
-            VALUES (%s, %s, %s)
-        ''', (referrer_id, referred_id, level))
-        conn.commit()
-        logger.info(f"Added referral: referrer {referrer_id}, referred {referred_id}, level {level}")
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    INSERT INTO referrals (referrer_id, referred_id, level)
+                    VALUES (%s, %s, %s)
+                ''', (referrer_id, referred_id, level))
+                conn.commit()
+                logger.info(f"Added referral: referrer {referrer_id}, referred {referred_id}, level {level}")
     except Exception as e:
         logger.error(f"Error adding referral for referrer {referrer_id}: {e}")
         raise
-    finally:
-        if conn is not None:
-            conn.close()
 
 def record_referral_profit(referrer_id, referred_id, transaction_id, level, profit_amount):
-    conn = None
+    """Record referral profit."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        created_at = dt.datetime.now(dt.UTC).isoformat()
-        c.execute('''
-            INSERT INTO referral_profits (referrer_id, referred_id, transaction_id, level, profit_amount, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        ''', (referrer_id, referred_id, transaction_id, level, profit_amount, created_at))
-        conn.commit()
-        logger.info(f"Recorded referral profit: referrer {referrer_id}, referred {referred_id}, profit {profit_amount}, level {level}")
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                created_at = dt.datetime.now(dt.UTC).isoformat()
+                c.execute('''
+                    INSERT INTO referral_profits (referrer_id, referred_id, transaction_id, level, profit_amount, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                ''', (referrer_id, referred_id, transaction_id, level, profit_amount, created_at))
+                conn.commit()
+                logger.info(f"Recorded referral profit: referrer {referrer_id}, referred {referred_id}, profit {profit_amount}, level {level}")
     except Exception as e:
         logger.error(f"Error recording referral profit for referrer {referrer_id}: {e}")
         raise
-    finally:
-        if conn is not None:
-            conn.close()
 
 def get_referral_stats(user_id):
-    conn = None
+    """Get referral statistics."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        # تعداد کاربران در هر سطح
-        c.execute('''
-            SELECT level, COUNT(*) 
-            FROM referrals 
-            WHERE referrer_id = %s 
-            GROUP BY level
-        ''', (user_id,))
-        level_counts = {1: 0, 2: 0, 3: 0}
-        for level, count in c.fetchall():
-            level_counts[level] = count
-        # کل سود
-        c.execute('''
-            SELECT SUM(profit_amount) 
-            FROM referral_profits 
-            WHERE referrer_id = %s
-        ''', (user_id,))
-        total_profit = c.fetchone()[0] or 0.0
-        # تاریخچه تراکنش‌های زیرمجموعه‌ها
-        c.execute('''
-            SELECT t.amount, t.network, t.status, t.type, t.created_at, r.level
-            FROM transactions t
-            JOIN referrals r ON t.user_id = r.referred_id
-            WHERE r.referrer_id = %s AND t.type = 'deposit' AND t.status = 'confirmed'
-            ORDER BY t.created_at DESC
-            LIMIT 10
-        ''', (user_id,))
-        transactions = c.fetchall()
-        return level_counts[1], level_counts[2], level_counts[3], total_profit, transactions
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    SELECT level, COUNT(*) 
+                    FROM referrals 
+                    WHERE referrer_id = %s 
+                    GROUP BY level
+                ''', (user_id,))
+                level_counts = {1: 0, 2: 0, 3: 0}
+                for level, count in c.fetchall():
+                    level_counts[level] = count
+                c.execute('''
+                    SELECT SUM(profit_amount) 
+                    FROM referral_profits 
+                    WHERE referrer_id = %s
+                ''', (user_id,))
+                total_profit = c.fetchone()[0] or 0.0
+                c.execute('''
+                    SELECT t.amount, t.network, t.status, t.type, t.created_at, r.level
+                    FROM transactions t
+                    JOIN referrals r ON t.user_id = r.referred_id
+                    WHERE r.referrer_id = %s AND t.type = 'deposit' AND t.status = 'confirmed'
+                    ORDER BY t.created_at DESC
+                    LIMIT 10
+                ''', (user_id,))
+                transactions = c.fetchall()
+                return level_counts[1], level_counts[2], level_counts[3], total_profit, transactions
     except Exception as e:
         logger.error(f"Error getting referral stats for user {user_id}: {e}")
         return 0, 0, 0, 0.0, []
-    finally:
-        if conn is not None:
-            conn.close()
 
 def get_referral_chain(user_id):
-    conn = None
+    """Get referral chain for a user."""
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        chain = []
-        current_id = user_id
-        for level in range(1, 4):  # تا سطح ۳
-            c.execute('SELECT referred_by FROM users WHERE user_id = %s', (current_id,))
-            result = c.fetchone()
-            if result and result[0]:
-                chain.append((result[0], level))
-                current_id = result[0]
-            else:
-                break
-        return chain
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                chain = []
+                current_id = user_id
+                for level in range(1, 4):
+                    c.execute('SELECT referred_by FROM users WHERE user_id = %s', (current_id,))
+                    result = c.fetchone()
+                    if result and result[0]:
+                        chain.append((result[0], level))
+                        current_id = result[0]
+                    else:
+                        break
+                return chain
     except Exception as e:
         logger.error(f"Error getting referral chain for user {user_id}: {e}")
         return []
-    finally:
-        if conn is not None:
-            conn.close()
 
-# مقداردهی اولیه دیتابیس
+# Initialize database
 try:
     init_db()
 except Exception as e:
     logger.error(f"Failed to initialize database: {e}")
     exit(1)
 
-# نمایش منوی اصلی
+# Menu generation
 def get_main_menu(lang):
+    """Generate main menu keyboard."""
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("💸 واریز" if lang == "fa" else "💸 Deposit", callback_data="deposit"),
@@ -720,13 +682,16 @@ def get_main_menu(lang):
     ])
 
 def get_referral_menu(lang):
+    """Generate referral menu keyboard."""
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")
         ]
     ])
 
+# Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start command."""
     user_id = update.effective_user.id
     args = context.args
     logger.info(f"User {user_id} called /start with args: {args}")
@@ -738,7 +703,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             referred_by = int(args[0].split("_")[1])
             if referred_by == user_id:
-                referred_by = None  # جلوگیری از رفرال به خود
+                referred_by = None
         except (IndexError, ValueError):
             logger.warning(f"Invalid referral code for user {user_id}: {args[0]}")
     
@@ -747,11 +712,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         upsert_user(user_id, language="en", referred_by=referred_by)
         if referred_by:
-            # ثبت رفرال‌ها تا سطح ۳
             add_referral(referred_by, user_id, 1)
             chain = get_referral_chain(referred_by)
             for referrer_id, level in chain:
-                if level < 3:  # تا سطح ۲ برای زیرمجموعه‌ها
+                if level < 3:
                     add_referral(referrer_id, user_id, level + 1)
     
     bot_username = (await context.bot.get_me()).username
@@ -765,6 +729,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle language selection."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -809,6 +774,7 @@ async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT
         return ConversationHandler.END
 
 async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle menu button callbacks."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -1003,6 +969,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
 async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle deposit amount input."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
@@ -1052,6 +1019,7 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
 
 async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle deposit network selection."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -1093,6 +1061,7 @@ async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_T
         return ConversationHandler.END
 
 async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle deposit TXID or screenshot."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
@@ -1199,6 +1168,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
         return ConversationHandler.END
 
 async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle withdrawal amount input."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
@@ -1244,6 +1214,7 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ConversationHandler.END
 
 async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle withdrawal address input."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
@@ -1350,6 +1321,7 @@ async def receive_withdraw_address(update: Update, context: ContextTypes.DEFAULT
         return ConversationHandler.END
 
 async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle admin actions for transaction confirmation/rejection."""
     query = update.callback_query
     await query.answer()
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
@@ -1400,17 +1372,15 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 if type == "deposit":
                     update_balance(user_id, amount)
                     update_transaction_status(transaction_id, user_id, message_id, "confirmed")
-                    # محاسبه سود رفرال
-                    referral_rates = {1: 0.05, 2: 0.03, 3: 0.01}  # ۵٪، ۳٪، ۱٪
-                    conn = psycopg2.connect(DATABASE_URL)
-                    c = conn.cursor()
-                    c.execute('''
-                        SELECT referrer_id, level 
-                        FROM referrals 
-                        WHERE referred_id = %s
-                    ''', (user_id,))
-                    referrals = c.fetchall()
-                    conn.close()
+                    referral_rates = {1: 0.05, 2: 0.03, 3: 0.01}
+                    with psycopg2.connect(DATABASE_URL) as conn:
+                        with conn.cursor() as c:
+                            c.execute('''
+                                SELECT referrer_id, level 
+                                FROM referrals 
+                                WHERE referred_id = %s
+                            ''', (user_id,))
+                            referrals = c.fetchall()
                     for referrer_id, level in referrals:
                         if level in referral_rates:
                             profit = amount * referral_rates[level]
@@ -1462,7 +1432,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         f"✅ *تراکنش برداشت تأیید شد!*\nکاربر: {user_id}\nمقدار: {amount} تتر\nآدرس: {address}\nموجودی جدید: {balance} تتر",
                         parse_mode="Markdown"
                     )
-            else:  # reject
+            else:
                 update_transaction_status(transaction_id, user_id, message_id, "rejected")
                 await context.bot.send_message(
                     chat_id=user_id,
@@ -1481,6 +1451,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
 
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test admin notification."""
     user_id = update.effective_user.id
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
@@ -1516,6 +1487,7 @@ async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug database status."""
     user_id = update.effective_user.id
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
@@ -1534,17 +1506,16 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        c = conn.cursor()
-        c.execute('SELECT COUNT(*) FROM users')
-        user_count = c.fetchone()[0]
-        c.execute('SELECT COUNT(*) FROM transactions')
-        transaction_count = c.fetchone()[0]
-        c.execute('SELECT COUNT(*) FROM referrals')
-        referral_count = c.fetchone()[0]
-        c.execute('SELECT COUNT(*) FROM referral_profits')
-        profit_count = c.fetchone()[0]
-        conn.close()
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT COUNT(*) FROM users')
+                user_count = c.fetchone()[0]
+                c.execute('SELECT COUNT(*) FROM transactions')
+                transaction_count = c.fetchone()[0]
+                c.execute('SELECT COUNT(*) FROM referrals')
+                referral_count = c.fetchone()[0]
+                c.execute('SELECT COUNT(*) FROM referral_profits')
+                profit_count = c.fetchone()[0]
         await update.message.reply_text(
             f"🛠 *وضعیت دیتابیس*\n"
             f"────────────────────\n"
@@ -1570,6 +1541,7 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test database connection."""
     user_id = update.effective_user.id
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
@@ -1583,13 +1555,13 @@ async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(messages[lang]["unauthorized"], parse_mode="Markdown")
         return
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        await update.message.reply_text("✅ Connection to PostgreSQL successful!")
-        conn.close()
+        with psycopg2.connect(DATABASE_URL) as conn:
+            await update.message.reply_text("✅ Connection to PostgreSQL successful!")
     except Exception as e:
         await update.message.reply_text(f"❌ Error connecting to database: {e}", parse_mode="Markdown")
 
 async def reset_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reset database tables."""
     user_id = update.effective_user.id
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
@@ -1611,6 +1583,7 @@ async def reset_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error resetting database: {e}", parse_mode="Markdown")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancel ongoing conversation."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
@@ -1625,6 +1598,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle unexpected messages."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
@@ -1639,6 +1613,7 @@ async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAUL
     return ConversationHandler.END
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle errors."""
     logger.error(f"Update {update} caused error {context.error}")
     if update and update.effective_message:
         user_id = update.effective_user.id
