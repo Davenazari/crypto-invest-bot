@@ -283,7 +283,7 @@ messages = {
         "wallet_balance": lambda balance: (
             f"💼 *Your Wallet Balance*\n"
             f"────────────────────\n"
-            f"💰 *Amount*: `{balance:.2f}` USDT\n"
+            f"💰 *Amount*: `{balance}` USDT\n"
             f"────────────────────\n"
             f"📌 Choose an option below to deposit or withdraw."
         ),
@@ -479,7 +479,6 @@ def get_user(user_id):
         c = conn.cursor()
         c.execute('SELECT language, balance, referred_by FROM users WHERE user_id = %s', (user_id,))
         user = c.fetchone()
-        logger.info(f"Retrieved user {user_id}: {user}")
         return user
     except Exception as e:
         logger.error(f"Error getting user {user_id}: {e}")
@@ -512,10 +511,6 @@ def update_balance(user_id, amount):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         c = conn.cursor()
-        c.execute('SELECT user_id FROM users WHERE user_id = %s', (user_id,))
-        if not c.fetchone():
-            logger.error(f"No user found for user_id {user_id}")
-            raise Exception(f"No user found for user_id {user_id}")
         c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
         c.execute('SELECT balance FROM users WHERE user_id = %s', (user_id,))
         new_balance = c.fetchone()[0]
@@ -581,7 +576,6 @@ def get_transaction(transaction_id, user_id, message_id):
             WHERE id = %s AND user_id = %s AND message_id = %s AND status = 'pending'
         ''', (transaction_id, user_id, message_id))
         transaction = c.fetchone()
-        logger.info(f"Retrieved transaction for user {user_id}, transaction_id {transaction_id}: {transaction}")
         return transaction
     except Exception as e:
         logger.error(f"Error getting transaction for user {user_id}: {e}")
@@ -680,7 +674,6 @@ def get_referral_stats(user_id):
             LIMIT 10
         ''', (user_id,))
         transactions = c.fetchall()
-        logger.info(f"Retrieved referral stats for user {user_id}: {level_counts}, total_profit={total_profit}")
         return level_counts[1], level_counts[2], level_counts[3], total_profit, transactions
     except Exception as e:
         logger.error(f"Error getting referral stats for user {user_id}: {e}")
@@ -704,7 +697,6 @@ def get_referral_chain(user_id):
                 current_id = result[0]
             else:
                 break
-        logger.info(f"Retrieved referral chain for user {user_id}: {chain}")
         return chain
     except Exception as e:
         logger.error(f"Error getting referral chain for user {user_id}: {e}")
@@ -954,20 +946,12 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         elif query.data.startswith("lang_"):
             new_lang = query.data.split("_")[1]
-            try:
-                upsert_user(user_id, language=new_lang)
-                await query.message.edit_text(
-                    messages[new_lang]["language_updated"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(new_lang)
-                )
-            except Exception as e:
-                logger.error(f"Error updating language for user {user_id}: {e}")
-                await query.message.reply_text(
-                    messages[lang]["db_error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
+            upsert_user(user_id, language=new_lang)
+            await query.message.reply_text(
+                messages[new_lang]["language_updated"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(new_lang)
+            )
             return ConversationHandler.END
 
         elif query.data == "support":
@@ -1351,10 +1335,6 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID in handle_admin_callback: {admin_id}")
-        await query.message.reply_text(
-            messages["en"]["admin_error"],
-            parse_mode="Markdown"
-        )
         return
 
     admin_id = int(admin_id)
@@ -1385,7 +1365,6 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         transaction = get_transaction(transaction_id, user_id, message_id)
         if not transaction:
-            logger.error(f"No pending transaction found for user {user_id}, transaction_id {transaction_id}")
             await query.message.reply_text(
                 messages["en"]["error"],
                 parse_mode="Markdown"
@@ -1459,7 +1438,7 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception as e:
             logger.error(f"Error in handle_admin_callback for user {user_id}: {e}")
             await query.message.reply_text(
-                f"❌ *خطا در تأیید/رد تراکنش*: {str(e)}",
+                messages["en"]["error"],
                 parse_mode="Markdown"
             )
 
@@ -1503,7 +1482,6 @@ async def debug(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID in debug: {admin_id}")
-        await update.message.reply_text("Invalid ADMIN_ID configuration", parse_mode="Markdown")
         return
 
     admin_id = int(admin_id)
@@ -1558,7 +1536,6 @@ async def test_db(update: Update, context: ContextTypes.DEFAULT_TYPE):
     admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
     if not admin_id or not admin_id.isdigit():
         logger.error(f"Invalid or missing ADMIN_ID in test_db: {admin_id}")
-        await update.message.reply_text("Invalid ADMIN_ID configuration", parse_mode="Markdown")
         return
 
     admin_id = int(admin_id)
