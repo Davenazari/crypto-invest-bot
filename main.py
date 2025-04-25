@@ -273,7 +273,9 @@ messages = {
         ),
         "rejected": (
             "❌ *Transaction Rejected!*\n"
-            "Your deposit was not approved '
+            "Your deposit was not approved.\n"
+            "📩 Please contact support for more details."
+         ),   
 
 # ادامه کد اصلاح‌شده
             "📩 Please contact support for more details."
