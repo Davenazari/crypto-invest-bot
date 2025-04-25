@@ -1081,7 +1081,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
                 ])
     )
-    return ConversationHandler.END
+            return ConversationHandler.END
 
         elif query.data == "back_to_menu":
             context.user_data.clear()
