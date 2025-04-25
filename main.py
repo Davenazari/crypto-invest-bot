@@ -929,17 +929,19 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     if not all([amount, network, status, type, created_at]):
                         logger.warning(f"Invalid transaction data for user {user_id}: {transaction}")
                         continue
+                    # Set network display for profit transactions
+                    network_display = network if network else ("بدون شبکه" if lang == "fa" else "No Network")
                     status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
                     type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
                     transaction_text += (
                         f"💰 *{type_text}*: `{amount}` تتر\n"
-                        f"📲 *شبکه*: {network}\n"
+                        f"📲 *شبکه*: {network_display}\n"
                         f"📅 *وضعیت*: {status_text}\n"
                         f"⏰ *زمان*: {created_at}\n"
                         f"────────────────────\n"
                     ) if lang == "fa" else (
                         f"💰 *{type_text}*: `{amount}` USDT\n"
-                        f"📲 *Network*: {network}\n"
+                        f"📲 *Network*: {network_display}\n"
                         f"📅 *Status*: {status_text}\n"
                         f"⏰ *Time*: {created_at}\n"
                         f"────────────────────\n"
@@ -990,14 +992,14 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                         type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
                         transaction_text += (
                             f"💰 *{type_text}*: `{amount}` تتر\n"
-                            f"📲 *شبکه*: {network}\n"
+                            f"📲 *شبکه*: {network_display}\n"
                             f"📅 *وضعیت*: {status_text}\n"
                             f"📊 *سطح*: {level}\n"
                             f"⏰ *زمان*: {created_at}\n"
                             f"────────────────────\n"
                         ) if lang == "fa" else (
                             f"💰 *{type_text}*: `{amount}` USDT\n"
-                            f"📲 *Network*: {network}\n"
+                            f"📲 *Network*: {network_display}\n"
                             f"📅 *Status*: {status_text}\n"
                             f"📊 *Level*: {level}\n"
                             f"⏰ *Time*: {created_at}\n"
@@ -1229,7 +1231,7 @@ async def receive_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"👤 *کاربر*: {update.effective_user.first_name} ({user_id})\n"
                 f"🌐 *زبان*: {lang}\n"
                 f"💰 *مقدار*: {amount} تتر\n"
-                f"📲 *شبکه*: {network}\n"
+                f"📲 *شبکه*: {network_display}\n"
                 f"⏰ *زمان*: {update.message.date}\n"
                 f"────────────────────\n"
                 f"✅ لطفاً وضعیت تراکنش را مشخص کنید:"
