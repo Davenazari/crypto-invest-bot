@@ -98,17 +98,24 @@ messages = {
             "📩 لطفاً با پشتیبانی تماس بگیرید."
         ),
         "wallet_menu": "💼 *ولت من*\nلطفاً یک گزینه را انتخاب کنید:",
-        "wallet_balance": lambda balance: (
-            f"💼 *موجودی کیف پول شما*\n"
+        "wallet_balance": lambda balance, total_profit, transaction_count, last_transaction: (
+            f"💼 *کیف پول شما*\n"
             f"────────────────────\n"
-            f"💰 *مقدار*: `{balance}` تتر\n"
+            f"💰 *موجودی*: `{balance}` تتر\n"
+            f"📈 *کل سود کسب‌شده*: `{total_profit}` تتر\n"
+            f"📝 *تراکنش‌های موفق*: `{transaction_count}`\n"
+            f"⏰ *آخرین تراکنش*: {'ندارد' if not last_transaction else last_transaction}\n"
             f"────────────────────\n"
             f"📌 برای واریز یا برداشت، گزینه‌های زیر را انتخاب کنید."
-        ),
-        "wallet_empty": (
-            "💼 *کیف پول خالی است!*\n"
-            "هنوز هیچ واریزی تأیید نشده است.\n"
-            "📌 برای واریز، از منوی اصلی گزینه واریز را انتخاب کنید."
+        ) if balance > 0 else (
+            f"💼 *کیف پول شما*\n"
+            f"────────────────────\n"
+            f"💰 *موجودی*: `{balance}` تتر\n"
+            f"📈 *کل سود کسب‌شده*: `{total_profit}` تتر\n"
+            f"📝 *تراکنش‌های موفق*: `{transaction_count}`\n"
+            f"⏰ *آخرین تراکنش*: {'ندارد' if not last_transaction else last_transaction}\n"
+            f"────────────────────\n"
+            f"📌 برای واریز، گزینه واریز را انتخاب کنید."
         ),
         "withdraw": "💸 *برداشت*",
         "ask_withdraw_amount": (
@@ -288,17 +295,24 @@ messages = {
             "📩 Please contact support for more details."
         ),
         "wallet_menu": "💼 *My Wallet*\nPlease select an option:",
-        "wallet_balance": lambda balance: (
-            f"💼 *Your Wallet Balance*\n"
+        "wallet_balance": lambda balance, total_profit, transaction_count, last_transaction: (
+            f"💼 *Your Wallet*\n"
             f"────────────────────\n"
-            f"💰 *Amount*: `{balance}` USDT\n"
+            f"💰 *Balance*: `{balance}` USDT\n"
+            f"📈 *Total Profit Earned*: `{total_profit}` USDT\n"
+            f"📝 *Successful Transactions*: `{transaction_count}`\n"
+            f"⏰ *Last Transaction*: {'None' if not last_transaction else last_transaction}\n"
             f"────────────────────\n"
             f"📌 Choose an option below to deposit or withdraw."
-        ),
-        "wallet_empty": (
-            "💼 *Wallet is Empty!*\n"
-            "No deposits have been confirmed yet.\n"
-            "📌 To deposit, select Deposit from the main menu."
+        ) if balance > 0 else (
+            f"💼 *Your Wallet*\n"
+            f"────────────────────\n"
+            f"💰 *Balance*: `{balance}` USDT\n"
+            f"📈 *Total Profit Earned*: `{total_profit}` USDT\n"
+            f"📝 *Successful Transactions*: `{transaction_count}`\n"
+            f"⏰ *Last Transaction*: {'None' if not last_transaction else last_transaction}\n"
+            f"────────────────────\n"
+            f"📌 To deposit, select the Deposit option."
         ),
         "withdraw": "💸 *Withdraw*",
         "ask_withdraw_amount": (
@@ -862,31 +876,43 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
         elif query.data == "wallet":
             balance = user[1] if user else 0
-            if balance == 0:
+            try:
+                with psycopg2.connect(DATABASE_URL) as conn:
+                    with conn.cursor() as c:
+                        # Get total profit from profits table
+                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                        total_profit = c.fetchone()[0] or 0.0
+                        # Get count of successful transactions
+                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                        transaction_count = c.fetchone()[0]
+                        # Get last transaction date
+                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+            except psycopg2.Error as e:
+                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
                 await query.message.reply_text(
-                    messages[lang]["wallet_empty"],
+                    messages[lang]["db_error"],
                     parse_mode="Markdown",
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton("💸 واریز" if lang == "fa" else "💸 Deposit", callback_data="deposit"),
-                            InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
-                        ],
-                        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                    ])
+                    reply_markup=get_main_menu(lang)
                 )
-            else:
-                await query.message.reply_text(
-                    messages[lang]["wallet_balance"](balance),
-                    parse_mode="Markdown",
-                    reply_markup=InlineKeyboardMarkup([
-                        [
-                            InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw"),
-                            InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
-                        ],
-                        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                    ])
-                )
-            return ConversationHandler.END
+                return ConversationHandler.END
+
+        await query.message.reply_text(
+            messages[lang]["wallet_balance"](balance, total_profit, transaction_count, last_transaction),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("💸 واریز" if lang == "fa" else "💸 Deposit", callback_data="deposit"),
+                    InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
+                ],
+                [
+                    InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw") if balance > 0 else
+                    InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="no_balance")
+                ],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+            ])
+        )
+        return ConversationHandler.END
 
         elif query.data == "withdraw":
             context.user_data.clear()
@@ -1046,6 +1072,16 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 ])
             )
             return ConversationHandler.END
+    
+        elif query.data == "no_balance":
+            await query.message.reply_text(
+                messages[lang]["insufficient_balance"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                ])
+    )
+    return ConversationHandler.END
 
         elif query.data == "back_to_menu":
             context.user_data.clear()
