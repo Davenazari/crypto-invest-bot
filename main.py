@@ -1580,7 +1580,7 @@ async def test_profit_distribution(update: Update, context: ContextTypes.DEFAULT
 
     await distribute_profits(context)
     await update.message.reply_text("✅ Profit distribution executed!", parse_mode="Markdown")
-    
+
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test admin notification."""
     user_id = update.effective_user.id
@@ -1796,6 +1796,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("test_db", test_db))
     app.add_handler(CommandHandler("test_admin", test_admin))
     app.add_handler(CommandHandler("reset_db", reset_db))
+    app.add_handler(CommandHandler("test_profit", test_profit_distribution))
     app.add_error_handler(error_handler)
 
     logger.info("🚀 Starting bot polling...")
