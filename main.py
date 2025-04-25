@@ -283,7 +283,7 @@ messages = {
         "wallet_balance": lambda balance: (
             f"💼 *Your Wallet Balance*\n"
             f"────────────────────\n"
-            f"💰 *Amount*: `{ F"{balance:.2f}" }` USDT\n"
+            f"💰 *Amount*: `{balance:.2f}` USDT\n"
             f"────────────────────\n"
             f"📌 Choose an option below to deposit or withdraw."
         ),
