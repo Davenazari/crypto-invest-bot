@@ -1562,7 +1562,25 @@ async def handle_admin_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 messages["en"]["error"],
                 parse_mode="Markdown"
             )
+async def test_profit_distribution(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test profit distribution manually."""
+    user_id = update.effective_user.id
+    admin_id = os.getenv("ADMIN_ID", DEFAULT_ADMIN_ID)
+    if not admin_id or not admin_id.isdigit():
+        await update.message.reply_text("Invalid ADMIN_ID configuration", parse_mode="Markdown")
+        return
 
+    admin_id = int(admin_id)
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+
+    if user_id != admin_id:
+        await update.message.reply_text(messages[lang]["unauthorized"], parse_mode="Markdown")
+        return
+
+    await distribute_profits(context)
+    await update.message.reply_text("✅ Profit distribution executed!", parse_mode="Markdown")
+    
 async def test_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test admin notification."""
     user_id = update.effective_user.id
