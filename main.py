@@ -742,6 +742,8 @@ async def distribute_profits(context: ContextTypes.DEFAULT_TYPE):
                     if profit > 0:
                         update_balance(user_id, profit)
                         insert_profit(user_id, profit, "Daily")
+                        # Insert profit as a transaction
+                        insert_transaction(user_id, profit, None, "confirmed", "profit", None)
                         await context.bot.send_message(
                             chat_id=user_id,
                             text=messages[lang]["profit_credited"](profit, "روزانه" if lang == "fa" else "Daily"),
@@ -919,6 +921,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 type_map = {
                     "deposit": ("واریز", "Deposit"),
                     "withdrawal": ("برداشت", "Withdrawal")
+                    "profit": ("سود", "Profit")
                 }
                 for transaction in transactions:
                     amount, network, status, type, created_at = transaction
