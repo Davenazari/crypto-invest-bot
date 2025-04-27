@@ -1815,6 +1815,7 @@ if __name__ == '__main__':
                 days=(0, 1, 2, 3, 4, 5, 6)  # هر روز هفته
             )
             logger.info("Scheduled daily profit distribution at 20:30 UTC (00:00 IRST)")
+            logger.info("JobQueue initialized successfully with distribute_profits job")
         except Exception as e:
             logger.error(f"Failed to schedule daily profit distribution: {e}")
             exit(1)
