@@ -1016,6 +1016,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     for amount, network, status, type, created_at, level in transactions:
                         status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
                         type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
+                        network_display = network if network else ("بدون شبکه" if lang == "fa" else "No Network")
                         transaction_text += (
                             f"💰 *{type_text}*: `{amount}` تتر\n"
                             f"📲 *شبکه*: {network_display}\n"
@@ -1048,20 +1049,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-
-        elif query.data == "language":
-            await query.message.reply_text(
-                messages[lang]["language_menu"],
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("فارسی", callback_data="lang_fa"),
-                        InlineKeyboardButton("English", callback_data="lang_en")
-                    ],
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
-            )
-            return ConversationHandler.END
 
         elif query.data == "support":
             await query.message.reply_text(
