@@ -1834,7 +1834,8 @@ if __name__ == '__main__':
         fallbacks=[
             CommandHandler('cancel', cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
-        ]
+        ],
+        per_message=True  # اضافه کردن این خط برای رفع هشدار
     )
 
     app.add_handler(CommandHandler('start', start))
