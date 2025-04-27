@@ -751,13 +751,12 @@ async def distribute_profits(context: ContextTypes.DEFAULT_TYPE):
             with conn.cursor() as c:
                 c.execute('SELECT user_id, balance, language FROM users WHERE balance > 0')
                 users = c.fetchall()
-                logger.info(f"Found {len(users)} users with positive balance for profit distribution")
                 for user_id, balance, lang in users:
-                    profit = round(balance * 0.5 / 30, 2)
+                    profit = round(balance * 0.5 / 30, 2)  # Daily profit (0.5% monthly / 30)
                     if profit > 0:
-                        logger.info(f"Processing profit for user {user_id}: balance={balance}, profit={profit}")
                         update_balance(user_id, profit)
                         insert_profit(user_id, profit, "Daily")
+                        # Insert profit as a transaction
                         insert_transaction(user_id, profit, None, "confirmed", "profit", None)
                         await context.bot.send_message(
                             chat_id=user_id,
@@ -765,8 +764,6 @@ async def distribute_profits(context: ContextTypes.DEFAULT_TYPE):
                             parse_mode="Markdown"
                         )
                         logger.info(f"Credited {profit} USDT daily profit to user {user_id}")
-                    else:
-                        logger.info(f"No profit for user {user_id}: profit amount is {profit}")
     except Exception as e:
         logger.error(f"Error distributing profits: {e}")
 
@@ -1815,7 +1812,6 @@ if __name__ == '__main__':
                 days=(0, 1, 2, 3, 4, 5, 6)  # هر روز هفته
             )
             logger.info("Scheduled daily profit distribution at 20:30 UTC (00:00 IRST)")
-            logger.info("JobQueue initialized successfully with distribute_profits job")
         except Exception as e:
             logger.error(f"Failed to schedule daily profit distribution: {e}")
             exit(1)
@@ -1838,7 +1834,8 @@ if __name__ == '__main__':
         fallbacks=[
             CommandHandler('cancel', cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
-        ]
+        ],
+        per_message=True  # اضافه کردن این خط برای رفع هشدار
     )
 
     app.add_handler(CommandHandler('start', start))
