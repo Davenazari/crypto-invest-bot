@@ -1798,22 +1798,21 @@ if __name__ == '__main__':
 
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # برنامه‌ریزی توزیع سود روزانه
+    # برنامه‌ریزی توزیع سود یک‌بارمصرف برای تست
     def schedule_daily_profits(app):
-        """Schedule daily profit distribution."""
+        """Schedule one-time profit distribution for testing."""
         job_queue = app.job_queue
         if job_queue is None:
             logger.error("JobQueue is not available. Ensure 'python-telegram-bot[job-queue]' is installed in requirements.txt.")
             exit(1)
         try:
-            job_queue.run_daily(
+            job_queue.run_once(
                 distribute_profits,
-                time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc),  # اجرا در ساعت 00:00 UTC
-                days=(0, 1, 2, 3, 4, 5, 6)  # هر روز هفته
+                30  # اجرا بعد از 30 ثانیه
             )
-            logger.info("Scheduled daily profit distribution at 00:00 UTC")
+            logger.info("Scheduled one-time profit distribution in 30 seconds")
         except Exception as e:
-            logger.error(f"Failed to schedule daily profit distribution: {e}")
+            logger.error(f"Failed to schedule profit distribution: {e}")
             exit(1)
 
     schedule_daily_profits(app)
