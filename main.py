@@ -1809,8 +1809,7 @@ if __name__ == '__main__':
             job_queue.run_daily(
                 distribute_profits,
                 time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc),  # اجرا در ساعت 00:00 UTC
-                days=(0, 1, 2, 3, 4, 5, 6),  # هر روز هفته
-                context=app.context_types
+                days=(0, 1, 2, 3, 4, 5, 6)  # هر روز هفته
             )
             logger.info("Scheduled daily profit distribution at 00:00 UTC")
         except Exception as e:
@@ -1831,7 +1830,7 @@ if __name__ == '__main__':
             DEPOSIT_TXID: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_deposit_txid)],
             WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdraw_amount)],
             WITHDRAW_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_address)],
-        },
+        ],
         fallbacks=[
             CommandHandler('cancel', cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
