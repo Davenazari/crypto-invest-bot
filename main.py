@@ -1811,6 +1811,20 @@ if __name__ == '__main__':
 
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # برنامه‌ریزی توزیع سود روزانه
+    def schedule_daily_profits(app):
+        """Schedule daily profit distribution."""
+        job_queue = app.job_queue
+        job_queue.run_daily(
+            distribute_profits,
+            time=dt.time(hour=0, minute=0, tzinfo=dt.timezone.utc),  # اجرا در ساعت 00:00 UTC
+            days=(0, 1, 2, 3, 4, 5, 6),  # هر روز هفته
+            context=app.context_types
+        )
+        logger.info("Scheduled daily profit distribution at 00:00 UTC")
+
+    schedule_daily_profits(app)
+
     conv = ConversationHandler(
         entry_points=[
             CommandHandler('start', start),
