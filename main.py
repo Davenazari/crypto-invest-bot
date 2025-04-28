@@ -128,7 +128,7 @@ messages = {
         "withdraw": "💸 *برداشت*",
         "ask_withdraw_amount": (
             "💰 *مقدار برداشت*\n"
-            "لطفاً مقدار تتر (USDT) مورد نظر برای برداشت را وارد کنید:\n"
+            "لطفاً مقدار تتر (USDT) مورد نظر برای برداشت را وارد کنید (حداقل 15 تتر، مثال: 100):\n"
             "📌 مقدار باید کمتر یا برابر با موجودی شما باشد."
         ),
         "insufficient_balance": (
@@ -333,7 +333,7 @@ messages = {
         "withdraw": "💸 *Withdraw*",
         "ask_withdraw_amount": (
             "💰 *Withdrawal Amount*\n"
-            "Please enter the amount of USDT you want to withdraw:\n"
+            "Please enter the amount of USDT you want to withdraw (minimum 15 USDT, e.g., 100):\n"
             "📌 The amount must be less than or equal to your balance."
         ),
         "insufficient_balance": (
@@ -1123,10 +1123,10 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
     logger.info(f"User {user_id} entered deposit amount: {text}")
 
     try:
-        amount = float(text)
+        amount = float(text.replace(',', '.'))  # جایگزینی کاما با نقطه برای پشتیبانی از ورودی‌های مختلف
         if amount <= 0:
             raise ValueError("Amount must be positive")
-        if amount < 15:  # بررسی حداقل واریز
+        if amount < 15:
             logger.warning(f"Deposit amount below minimum by user {user_id}: {amount}")
             await update.message.reply_text(
                 messages[lang]["min_deposit_error"],
@@ -1136,18 +1136,7 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 ])
             )
             return DEPOSIT_AMOUNT
-    except ValueError:
-        logger.warning(f"Invalid deposit amount entered by user {user_id}: {text}")
-        await update.message.reply_text(
-            messages[lang]["invalid_amount"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-            ])
-        )
-        return DEPOSIT_AMOUNT
-
-    try:
+        # ذخیره مقدار و ادامه به مرحله بعدی
         context.user_data["amount"] = amount
         await update.message.reply_text(
             messages[lang]["result"](amount),
@@ -1165,8 +1154,18 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
             ])
         )
         return DEPOSIT_NETWORK
+    except ValueError:
+        logger.warning(f"Invalid deposit amount entered by user {user_id}: {text}")
+        await update.message.reply_text(
+            messages[lang]["invalid_amount"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+            ])
+        )
+        return DEPOSIT_AMOUNT
     except Exception as e:
-        logger.error(f"Error in get_deposit_amount for user {user_id}: {e}")
+        logger.error(f"Unexpected error in get_deposit_amount for user {user_id}: {e}")
         await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
@@ -1343,10 +1342,18 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.info(f"User {user_id} entered withdraw amount: {text}")
 
     try:
-        amount = float(text)
+        amount = float(text.replace(',', '.'))  # جایگزینی کاما با نقطه
         if amount <= 0:
-            raise ValueError("Amount must be positive")
-        if amount < 15:  # بررسی حداقل برداشت
+            logger.warning(f"Negative or zero withdrawal amount by user {user_id}: {amount}")
+            await update.message.reply_text(
+                messages[lang]["invalid_amount"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                ])
+            )
+            return WITHDRAW_AMOUNT
+        if amount < 15:
             logger.warning(f"Withdrawal amount below minimum by user {user_id}: {amount}")
             await update.message.reply_text(
                 messages[lang]["min_withdraw_error"],
@@ -1357,22 +1364,16 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return WITHDRAW_AMOUNT
         if amount > balance:
-            raise ValueError("Insufficient balance")
-    except ValueError as e:
-        logger.warning(f"Invalid withdraw amount entered by user {user_id}: {text}")
-        error_message = messages[lang]["insufficient_balance"] if str(e) == "Insufficient balance" else (
-            messages[lang]["min_withdraw_error"] if str(e) == "Amount below minimum" else messages[lang]["invalid_amount"]
-        )
-        await update.message.reply_text(
-            error_message,
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
-            ])
-        )
-        return WITHDRAW_AMOUNT
-
-    try:
+            logger.warning(f"Insufficient balance for withdrawal by user {user_id}: amount={amount}, balance={balance}")
+            await update.message.reply_text(
+                messages[lang]["insufficient_balance"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                ])
+            )
+            return WITHDRAW_AMOUNT
+        # ذخیره مقدار و ادامه به مرحله بعدی
         context.user_data["withdraw_amount"] = amount
         await update.message.reply_text(
             messages[lang]["ask_withdraw_address"],
@@ -1382,8 +1383,18 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
         )
         return WITHDRAW_ADDRESS
+    except ValueError:
+        logger.warning(f"Invalid withdraw amount entered by user {user_id}: {text}")
+        await update.message.reply_text(
+            messages[lang]["invalid_amount"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+            ])
+        )
+        return WITHDRAW_AMOUNT
     except Exception as e:
-        logger.error(f"Error in get_withdraw_amount for user {user_id}: {e}")
+        logger.error(f"Unexpected error in get_withdraw_amount for user {user_id}: {e}")
         await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
