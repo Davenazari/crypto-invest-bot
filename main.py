@@ -1902,22 +1902,23 @@ if __name__ == '__main__':
         per_message=True  # اضافه کردن این خط برای رفع هشدار
     )
 
-    app.add_handler(CommandHandler('start', start))
-    app.add_handler(conv)
-    app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
-    app.add_handler(CommandHandler("debug", debug))
-    app.add_handler(CommandHandler("test_db", test_db))
-    app.add_handler(CommandHandler("test_admin", test_admin))
-    app.add_handler(CommandHandler("reset_db", reset_db))
-    app.add_handler(CommandHandler("test_profit", test_profit_distribution))
-    app.add_error_handler(error_handler)
+app.add_handler(CommandHandler('start', start))
+app.add_handler(conv)
+app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
+app.add_handler(CommandHandler("debug", debug))
+app.add_handler(CommandHandler("test_db", test_db))
+app.add_handler(CommandHandler("test_admin", test_admin))
+app.add_handler(CommandHandler("reset_db", reset_db))
+app.add_handler(CommandHandler("test_profit", test_profit_distribution))
+app.add_error_handler(error_handler)
+
 async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
     logger.info(f"Received message from user {user_id}: '{text}'")
     return
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, log_message), group=1)
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, log_message), group=1)
 
-    logger.info("🚀 Starting bot polling...")
-    app.run_polling()
+logger.info("🚀 Starting bot polling...")
+app.run_polling()
