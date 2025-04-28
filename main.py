@@ -1911,7 +1911,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("reset_db", reset_db))
     app.add_handler(CommandHandler("test_profit", test_profit_distribution))
     app.add_error_handler(error_handler)
-    async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
     logger.info(f"Received message from user {user_id}: '{text}'")
