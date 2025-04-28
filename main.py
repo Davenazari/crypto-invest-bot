@@ -521,6 +521,7 @@ def init_db():
 # Database helper functions
 def get_user(user_id):
     """Retrieve user data from database."""
+    logger.info(f"Fetching user {user_id} from database")
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
@@ -1119,13 +1120,23 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    text = update.message.text
-    logger.info(f"User {user_id} entered deposit amount: {text}")
+    text = update.message.text.strip()  # حذف فاصله‌های اضافی
+    logger.info(f"Entering get_deposit_amount for user {user_id}, input: '{text}'")
 
     try:
-        amount = float(text.replace(',', '.'))  # جایگزینی کاما با نقطه برای پشتیبانی از ورودی‌های مختلف
+        # جایگزینی کاما با نقطه و حذف فاصله‌ها
+        cleaned_text = text.replace(',', '.').replace(' ', '')
+        amount = float(cleaned_text)
         if amount <= 0:
-            raise ValueError("Amount must be positive")
+            logger.warning(f"Negative or zero deposit amount by user {user_id}: {amount}")
+            await update.message.reply_text(
+                messages[lang]["invalid_amount"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                ])
+            )
+            return DEPOSIT_AMOUNT
         if amount < 15:
             logger.warning(f"Deposit amount below minimum by user {user_id}: {amount}")
             await update.message.reply_text(
@@ -1136,8 +1147,9 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 ])
             )
             return DEPOSIT_AMOUNT
-        # ذخیره مقدار و ادامه به مرحله بعدی
+        # ذخیره مقدار و ادامه
         context.user_data["amount"] = amount
+        logger.info(f"Valid deposit amount for user {user_id}: {amount}")
         await update.message.reply_text(
             messages[lang]["result"](amount),
             parse_mode="Markdown"
@@ -1154,8 +1166,8 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
             ])
         )
         return DEPOSIT_NETWORK
-    except ValueError:
-        logger.warning(f"Invalid deposit amount entered by user {user_id}: {text}")
+    except ValueError as ve:
+        logger.warning(f"Invalid deposit amount format by user {user_id}: '{text}', error: {ve}")
         await update.message.reply_text(
             messages[lang]["invalid_amount"],
             parse_mode="Markdown",
@@ -1338,11 +1350,13 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = get_user(user_id)
     lang = user[0] if user else "en"
     balance = user[1] if user else 0
-    text = update.message.text
-    logger.info(f"User {user_id} entered withdraw amount: {text}")
+    text = update.message.text.strip()  # حذف فاصله‌های اضافی
+    logger.info(f"Entering get_withdraw_amount for user {user_id}, input: '{text}'")
 
     try:
-        amount = float(text.replace(',', '.'))  # جایگزینی کاما با نقطه
+        # جایگزینی کاما با نقطه و حذف فاصله‌ها
+        cleaned_text = text.replace(',', '.').replace(' ', '')
+        amount = float(cleaned_text)
         if amount <= 0:
             logger.warning(f"Negative or zero withdrawal amount by user {user_id}: {amount}")
             await update.message.reply_text(
@@ -1373,8 +1387,9 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
                 ])
             )
             return WITHDRAW_AMOUNT
-        # ذخیره مقدار و ادامه به مرحله بعدی
+        # ذخیره مقدار و ادامه
         context.user_data["withdraw_amount"] = amount
+        logger.info(f"Valid withdrawal amount for user {user_id}: {amount}")
         await update.message.reply_text(
             messages[lang]["ask_withdraw_address"],
             parse_mode="Markdown",
@@ -1383,8 +1398,8 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
             ])
         )
         return WITHDRAW_ADDRESS
-    except ValueError:
-        logger.warning(f"Invalid withdraw amount entered by user {user_id}: {text}")
+    except ValueError as ve:
+        logger.warning(f"Invalid withdrawal amount format by user {user_id}: '{text}', error: {ve}")
         await update.message.reply_text(
             messages[lang]["invalid_amount"],
             parse_mode="Markdown",
@@ -1896,6 +1911,13 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("reset_db", reset_db))
     app.add_handler(CommandHandler("test_profit", test_profit_distribution))
     app.add_error_handler(error_handler)
+    async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text
+    logger.info(f"Received message from user {user_id}: '{text}'")
+    return
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, log_message), group=1)
 
     logger.info("🚀 Starting bot polling...")
     app.run_polling()
