@@ -521,7 +521,6 @@ def init_db():
 # Database helper functions
 def get_user(user_id):
     """Retrieve user data from database."""
-    logger.info(f"Fetching user {user_id} from database")
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
@@ -882,6 +881,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         if query.data == "deposit":
             context.user_data.clear()
+            logger.info(f"Entering DEPOSIT_AMOUNT state for user {user_id}")
             await query.message.reply_text(
                 messages[lang]["ask_amount"],
                 parse_mode="Markdown",
@@ -890,7 +890,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 ])
             )
             return DEPOSIT_AMOUNT
-
         elif query.data == "wallet":
             balance = user[1] if user else 0
             try:
@@ -930,9 +929,9 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 ])
             )
             return ConversationHandler.END
-
         elif query.data == "withdraw":
             context.user_data.clear()
+            logger.info(f"Entering WITHDRAW_AMOUNT state for user {user_id}")
             await query.message.reply_text(
                 messages[lang]["ask_withdraw_amount"],
                 parse_mode="Markdown",
@@ -941,7 +940,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 ])
             )
             return WITHDRAW_AMOUNT
-
         elif query.data == "history":
             try:
                 transactions = get_transaction_history(user_id)
@@ -1009,7 +1007,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-
         elif query.data == "referral":
             try:
                 level1, level2, level3, total_profit, transactions = get_referral_stats(user_id)
@@ -1066,7 +1063,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-
         elif query.data == "support":
             await query.message.reply_text(
                 messages[lang]["support"],
@@ -1076,7 +1072,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 ])
             )
             return ConversationHandler.END
-    
         elif query.data == "no_balance":
             await query.message.reply_text(
                 messages[lang]["insufficient_balance"],
@@ -1084,9 +1079,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
                 ])
-    )
+            )
             return ConversationHandler.END
-
         elif query.data == "back_to_menu":
             context.user_data.clear()
             await query.message.reply_text(
@@ -1095,7 +1089,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
-
         else:
             logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
@@ -1104,7 +1097,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
-
     except Exception as e:
         logger.error(f"Error in handle_menu_callback for user {user_id}: {e}")
         await query.message.reply_text(
@@ -1830,8 +1822,7 @@ async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAUL
     user = get_user(user_id)
     lang = user[0] if user else "en"
     text = update.message.text
-    logger.warning(f"User {user_id} sent unexpected message: {text}")
-
+    logger.warning(f"User {user_id} sent unexpected message: '{text}' in state {context.user_data.get('state', 'unknown')}")
     await update.message.reply_text(
         messages[lang]["unexpected_message"],
         parse_mode="Markdown",
@@ -1889,36 +1880,29 @@ if __name__ == '__main__':
             CallbackQueryHandler(handle_language_callback, pattern="^(lang_fa|lang_en)$")
         ],
         states={
-            DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],
+            DEPOSIT_AMOUNT: [MessageHandler(filters.ALL, get_deposit_amount)],  # تغییر به filters.ALL
             DEPOSIT_NETWORK: [CallbackQueryHandler(handle_deposit_network)],
             DEPOSIT_TXID: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_deposit_txid)],
-            WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdraw_amount)],
+            WITHDRAW_AMOUNT: [MessageHandler(filters.ALL, get_withdraw_amount)],  # تغییر به filters.ALL
             WITHDRAW_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_address)],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
         ],
-        per_message=True  # اضافه کردن این خط برای رفع هشدار
-    )
+        per_message=True
+)
 
-app.add_handler(CommandHandler('start', start))
-app.add_handler(conv)
-app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
-app.add_handler(CommandHandler("debug", debug))
-app.add_handler(CommandHandler("test_db", test_db))
-app.add_handler(CommandHandler("test_admin", test_admin))
-app.add_handler(CommandHandler("reset_db", reset_db))
-app.add_handler(CommandHandler("test_profit", test_profit_distribution))
-app.add_error_handler(error_handler)
+    app.add_handler(CommandHandler('start', start))
+    app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
+    app.add_handler(CommandHandler("debug", debug))
+    app.add_handler(CommandHandler("test_db", test_db))
+    app.add_handler(CommandHandler("test_admin", test_admin))
+    app.add_handler(CommandHandler("reset_db", reset_db))
+    app.add_handler(CommandHandler("test_profit", test_profit_distribution))
+    app.add_error_handler(error_handler)
+    
 
-async def log_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text
-    logger.info(f"Received message from user {user_id}: '{text}'")
-    return
-
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, log_message), group=1)
-
-logger.info("🚀 Starting bot polling...")
-app.run_polling()
+    logger.info("🚀 Starting bot polling...")
+    app.run_polling()
