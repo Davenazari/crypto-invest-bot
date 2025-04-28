@@ -1880,20 +1880,20 @@ if __name__ == '__main__':
             CallbackQueryHandler(handle_language_callback, pattern="^(lang_fa|lang_en)$")
         ],
         states={
-            DEPOSIT_AMOUNT: [MessageHandler(filters.ALL, get_deposit_amount)],  # تغییر به filters.ALL
+            DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],  # بازگشت به filters.TEXT
             DEPOSIT_NETWORK: [CallbackQueryHandler(handle_deposit_network)],
             DEPOSIT_TXID: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_deposit_txid)],
-            WITHDRAW_AMOUNT: [MessageHandler(filters.ALL, get_withdraw_amount)],  # تغییر به filters.ALL
+            WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdraw_amount)],  # بازگشت به filters.TEXT
             WITHDRAW_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_address)],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
         ],
-        per_message=True
-)
+        per_message=False  # تغییر به False
+    )
 
-    app.add_handler(CommandHandler('start', start))
+
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
     app.add_handler(CommandHandler("debug", debug))
