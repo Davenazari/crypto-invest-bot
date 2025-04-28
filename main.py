@@ -37,7 +37,7 @@ messages = {
         "deposit": "💸 *واریز USDT*",
         "ask_amount": (
             "💰 *مقدار سرمایه‌گذاری*\n"
-            "لطفاً مقدار سرمایه‌گذاری خود را به *تتر (USDT)* وارد کنید (مثال: 100):\n"
+            "لطفاً مقدار سرمایه‌گذاری خود را به *تتر (USDT)* وارد کنید (حداقل 15 تتر، مثال: 100):\n"
             "📌 عدد معتبر وارد کنید."
         ),
         "result": lambda amount: (
@@ -70,6 +70,14 @@ messages = {
             "🎉 *واریز ثبت شد!*\n"
             "تراکنش شما با موفقیت ثبت شد.\n"
             "⏳ لطفاً منتظر تأیید توسط تیم ما باشید."
+        ),
+        "min_deposit_error": (
+            "⚠️ *خطا*: مقدار واریز باید حداقل 15 تتر باشد!\n"
+            "لطفاً مقدار معتبر (بیشتر یا برابر با 15) وارد کنید."
+        ),
+        "min_withdraw_error": (
+            "⚠️ *خطا*: مقدار برداشت باید حداقل 15 تتر باشد!\n"
+            "لطفاً مقدار معتبر (بیشتر یا برابر با 15) وارد کنید."
         ),
         "error": (
             "❌ *خطا رخ داد!*\n"
@@ -234,7 +242,7 @@ messages = {
         "deposit": "💸 *Deposit USDT*",
         "ask_amount": (
             "💰 *Investment Amount*\n"
-            "Please enter your investment amount in *USDT* (e.g., 100):\n"
+            "Please enter your investment amount in *USDT* (minimum 15 USDT, e.g., 100):\n"
             "📌 Enter a valid number."
         ),
         "result": lambda amount: (
@@ -267,6 +275,14 @@ messages = {
             "🎉 *Deposit Recorded!*\n"
             "Your transaction has been successfully recorded.\n"
             "⏳ Please wait for confirmation from our team."
+        ),
+        "min_deposit_error": (
+            "⚠️ *Error*: Deposit amount must be at least 15 USDT!\n"
+            "Please enter a valid amount (greater than or equal to 15)."
+        ),
+        "min_withdraw_error": (
+            "⚠️ *Error*: Withdrawal amount must be at least 15 USDT!\n"
+            "Please enter a valid amount (greater than or equal to 15)."
         ),
         "error": (
             "❌ *Error Occurred!*\n"
@@ -1110,6 +1126,16 @@ async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE)
         amount = float(text)
         if amount <= 0:
             raise ValueError("Amount must be positive")
+        if amount < 15:  # بررسی حداقل واریز
+            logger.warning(f"Deposit amount below minimum by user {user_id}: {amount}")
+            await update.message.reply_text(
+                messages[lang]["min_deposit_error"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                ])
+            )
+            return DEPOSIT_AMOUNT
     except ValueError:
         logger.warning(f"Invalid deposit amount entered by user {user_id}: {text}")
         await update.message.reply_text(
@@ -1320,11 +1346,23 @@ async def get_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE
         amount = float(text)
         if amount <= 0:
             raise ValueError("Amount must be positive")
+        if amount < 15:  # بررسی حداقل برداشت
+            logger.warning(f"Withdrawal amount below minimum by user {user_id}: {amount}")
+            await update.message.reply_text(
+                messages[lang]["min_withdraw_error"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                ])
+            )
+            return WITHDRAW_AMOUNT
         if amount > balance:
             raise ValueError("Insufficient balance")
     except ValueError as e:
         logger.warning(f"Invalid withdraw amount entered by user {user_id}: {text}")
-        error_message = messages[lang]["insufficient_balance"] if str(e) == "Insufficient balance" else messages[lang]["invalid_amount"]
+        error_message = messages[lang]["insufficient_balance"] if str(e) == "Insufficient balance" else (
+            messages[lang]["min_withdraw_error"] if str(e) == "Amount below minimum" else messages[lang]["invalid_amount"]
+        )
         await update.message.reply_text(
             error_message,
             parse_mode="Markdown",
