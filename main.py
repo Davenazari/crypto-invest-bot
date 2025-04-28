@@ -1107,6 +1107,68 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.clear()
         return ConversationHandler.END
 
+async def handle_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle back button callbacks in DEPOSIT_AMOUNT and WITHDRAW_AMOUNT states."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"User {user_id} triggered back callback: {query.data}")
+
+    if query.data == "back_to_menu":
+        context.user_data.clear()
+        await query.message.reply_text(
+            messages[lang]["main_menu"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        return ConversationHandler.END
+    elif query.data == "wallet":
+        context.user_data.clear()
+        balance = user[1] if user else 0
+        try:
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor() as c:
+                    c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                    total_profit = c.fetchone()[0] or 0.0
+                    c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                    transaction_count = c.fetchone()[0]
+                    c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                    last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+        except psycopg2.Error as e:
+            logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
+            await query.message.reply_text(
+                messages[lang]["db_error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+
+        await query.message.reply_text(
+            messages[lang]["wallet_balance"](balance, total_profit, transaction_count, last_transaction),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("💸 واریز" if lang == "fa" else "💸 Deposit", callback_data="deposit"),
+                    InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
+                ],
+                [
+                    InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw") if balance > 0 else
+                    InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="no_balance")
+                ],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+            ])
+        )
+        return ConversationHandler.END
+    else:
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        return ConversationHandler.END
+    
 async def get_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle deposit amount input."""
     user_id = update.effective_user.id
@@ -1880,21 +1942,26 @@ if __name__ == '__main__':
             CallbackQueryHandler(handle_language_callback, pattern="^(lang_fa|lang_en)$")
         ],
         states={
-            DEPOSIT_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount)],  # بازگشت به filters.TEXT
+            DEPOSIT_AMOUNT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_deposit_amount),
+                CallbackQueryHandler(handle_back_callback, pattern="^(back_to_menu|wallet)$")
+            ],
             DEPOSIT_NETWORK: [CallbackQueryHandler(handle_deposit_network)],
             DEPOSIT_TXID: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_deposit_txid)],
-            WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdraw_amount)],  # بازگشت به filters.TEXT
+            WITHDRAW_AMOUNT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_withdraw_amount),
+                CallbackQueryHandler(handle_back_callback, pattern="^(back_to_menu|wallet)$")
+            ],
             WITHDRAW_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_withdraw_address)],
         },
         fallbacks=[
             CommandHandler('cancel', cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message)
         ],
-        per_message=False  # تغییر به False
+        per_message=False
     )
 
 
-    app.add_handler(CommandHandler('start', start))
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(handle_admin_callback, pattern="^(confirm_|reject_)"))
     app.add_handler(CommandHandler("debug", debug))
