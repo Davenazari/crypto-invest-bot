@@ -2076,41 +2076,41 @@ def main():
         conv_handler = ConversationHandler(
             entry_points=[
                 CommandHandler("start", start),
-                CallbackQueryHandler(handle_menu_callback, pattern="^(buy_seed|wallet|plant_seed|harvest_seed|withdraw|history|referral|support|back_to_menu)$"),
-                CallbackQueryHandler(handle_seed_selection, pattern="^(seed_\d+|confirm_seed_purchase)$"),
-                CallbackQueryHandler(handle_plant_seed, pattern="^(plant_\d+|wallet)$"),
-                CallbackQueryHandler(handle_harvest_seed, pattern="^(harvest_\d+|wallet)$"),
-                CallbackQueryHandler(handle_language_callback, pattern="^lang_(fa|en)$"),
-                CallbackQueryHandler(handle_deposit_network, pattern="^network_(TRC20|BEP20)$"),
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^(buy_seed|wallet|plant_seed|harvest_seed|withdraw|history|referral|support|back_to_menu)$"),
+                CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase)$"),
+                CallbackQueryHandler(handle_plant_seed, pattern=r"^(plant_\d+|wallet)$"),
+                CallbackQueryHandler(handle_harvest_seed, pattern=r"^(harvest_\d+|wallet)$"),
+                CallbackQueryHandler(handle_language_callback, pattern=r"^lang_(fa|en)$"),
+                CallbackQueryHandler(handle_deposit_network, pattern=r"^network_(TRC20|BEP20)$"),
             ],
             states={
                 SELECT_SEED: [
-                    CallbackQueryHandler(handle_seed_selection, pattern="^(seed_\d+|confirm_seed_purchase|back_to_menu)$"),
+                    CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|back_to_menu)$"),
                 ],
                 DEPOSIT_AMOUNT: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deposit_amount),
-                    CallbackQueryHandler(handle_menu_callback, pattern="^back_to_menu$"),
+                    CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),
                 ],
                 DEPOSIT_NETWORK: [
-                    CallbackQueryHandler(handle_deposit_network, pattern="^(network_(TRC20|BEP20)|back_to_menu)$"),
+                    CallbackQueryHandler(handle_deposit_network, pattern=r"^(network_(TRC20|BEP20)|back_to_menu)$"),
                 ],
                 DEPOSIT_TXID: [
                     MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
-                    CallbackQueryHandler(handle_menu_callback, pattern="^back_to_menu$"),
+                    CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),
                 ],
                 WITHDRAW_AMOUNT: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_amount),
-                    CallbackQueryHandler(handle_menu_callback, pattern="^wallet$"),
+                    CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
                 ],
                 WITHDRAW_ADDRESS: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_address),
-                    CallbackQueryHandler(handle_menu_callback, pattern="^wallet$"),
+                    CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
                 ],
                 PLANT_SEED: [
-                    CallbackQueryHandler(handle_plant_seed, pattern="^(plant_\d+|wallet)$"),
+                    CallbackQueryHandler(handle_plant_seed, pattern=r"^(plant_\d+|wallet)$"),
                 ],
                 HARVEST_SEED: [
-                    CallbackQueryHandler(handle_harvest_seed, pattern="^(harvest_\d+|wallet)$"),
+                    CallbackQueryHandler(handle_harvest_seed, pattern=r"^(harvest_\d+|wallet)$"),
                 ],
             },
             fallbacks=[
