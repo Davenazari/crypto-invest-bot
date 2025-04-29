@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 SELECT_SEED, DEPOSIT_AMOUNT, DEPOSIT_NETWORK, DEPOSIT_TXID, WITHDRAW_AMOUNT, WITHDRAW_ADDRESS, PLANT_SEED, HARVEST_SEED = range(8)
 
 # Default admin ID
-DEFAULT_ADMIN_ID = "536587863"
+DEFAULT_ADMIN_ID = 536587863  # Changed to integer
 
 # Supported languages
 langs = {"فارسی": "fa", "English": "en"}
@@ -601,6 +601,21 @@ def init_db():
                             INSERT INTO seeds (name, name_fa, price, daily_profit_rate)
                             VALUES (%s, %s, %s, %s)
                         ''', (seed["name"], seed["name_fa"], seed["price"], seed["daily_profit_rate"]))
+                # Check if seeds table is populated
+                c.execute('SELECT COUNT(*) FROM seeds')
+                seed_count = c.fetchone()[0]
+                if seed_count == 0:
+                    logger.error("Seeds table is empty after initialization")
+                    # Optionally notify admin
+                    try:
+                        bot = telegram.Bot(token=os.getenv("BOT_TOKEN"))
+                        bot.send_message(
+                            chat_id=DEFAULT_ADMIN_ID,
+                            text="⚠️ *Error*: Seeds table is empty after database initialization. Please check the database.",
+                            parse_mode="Markdown"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to notify admin about empty seeds table: {e}")        
                 conn.commit()
                 logger.info("Database initialized successfully")
     except Exception as e:
@@ -1710,7 +1725,7 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
     amount = context.user_data.get("amount")
     network = context.user_data.get("network")
     seed_idx = context.user_data.get("seed_idx")
-    logger.info(f"User {user_id} submitted TXID or screenshot")
+    logger.info(f"User {user_id} submitted TXID or screenshot: amount={amount}, network={network}, seed_idx={seed_idx}")
 
     if not all([amount, network, seed_idx is not None]):
         await update.message.reply_text(
@@ -1718,17 +1733,30 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
     try:
         seed = SEEDS[seed_idx]
+        # Check if seed exists in database
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('SELECT seed_id FROM seeds WHERE name = %s', (seed["name"],))
-                seed_id = c.fetchone()[0]
-        message_text = update.message.text or update.message.caption or "No TXID provided"
-        message_id = None
+                result = c.fetchone()
+                if not result:
+                    logger.error(f"No seed found in database for name: {seed['name']}")
+                    await update.message.reply_text(
+                        messages[lang]["db_error"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+                seed_id = result[0]
 
+        message_text = update.message.text or update.message.caption or "No TXID provided"
+        message_id = update.message.message_id
+
+        # Save screenshot if provided
         if update.message.photo:
             photo = update.message.photo[-1]
             file = await photo.get_file()
@@ -1737,32 +1765,24 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
             await file.download_to_drive(file_path)
             message_text = f"Screenshot: {file_path}"
 
-        try:
-            transaction_id = insert_transaction(
-                user_id, amount, network, "pending", "deposit",
-                update.message.message_id, seed_id=seed_id
-            )
-            message_id = update.message.message_id
-        except Exception as e:
-            logger.error(f"Database error inserting transaction for user {user_id}: {e}")
-            await update.message.reply_text(
-                messages[lang]["db_error"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
+        # Insert transaction
+        transaction_id = insert_transaction(
+            user_id, amount, network, "pending", "deposit",
+            message_id, seed_id=seed_id
+        )
 
+        # Send message to admin
+        admin_message = (
+            f"📥 *New Deposit Request*\n"
+            f"👤 *User ID*: `{user_id}`\n"
+            f"💰 *Amount*: `{amount}` USDT\n"
+            f"📲 *Network*: `{network}`\n"
+            f"🌱 *Seed*: `{seed['name_fa' if lang == 'fa' else 'name']}`\n"
+            f"📝 *TXID/Screenshot*: `{message_text}`\n"
+            f"🆔 *Transaction ID*: `{transaction_id}`\n"
+            f"📩 Reply with /confirm_{user_id}_{message_id} or /reject_{user_id}_{message_id}"
+        )
         try:
-            admin_message = (
-                f"📥 *New Deposit Request*\n"
-                f"👤 *User ID*: `{user_id}`\n"
-                f"💰 *Amount*: `{amount}` USDT\n"
-                f"📲 *Network*: `{network}`\n"
-                f"🌱 *Seed*: `{seed['name_fa' if lang == 'fa' else 'name']}`\n"
-                f"📝 *TXID/Screenshot*: `{message_text}`\n"
-                f"🆔 *Transaction ID*: `{transaction_id}`\n"
-                f"📩 Reply with /confirm_{user_id}_{message_id} or /reject_{user_id}_{message_id}"
-            )
             await context.bot.send_message(
                 chat_id=DEFAULT_ADMIN_ID,
                 text=admin_message,
@@ -1773,10 +1793,14 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
                     chat_id=DEFAULT_ADMIN_ID,
                     photo=open(file_path, "rb")
                 )
+                os.remove(file_path)  # Clean up screenshot file
         except telegram.error.TelegramError as e:
             logger.error(f"Error sending message to admin for user {user_id}: {e}")
+            error_message = messages[lang]["admin_error"]
+            if "blocked" in str(e).lower():
+                error_message += "\n📌 Admin has blocked the bot. Please contact support."
             await update.message.reply_text(
-                messages[lang]["admin_error"],
+                error_message,
                 parse_mode="Markdown",
                 reply_markup=get_main_menu(lang)
             )
@@ -1789,8 +1813,18 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         context.user_data.clear()
         return ConversationHandler.END
+
+    except psycopg2.Error as e:
+        logger.error(f"Database error for user {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["db_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
     except Exception as e:
-        logger.error(f"Error in handle_deposit_txid for user {user_id}: {e}")
+        logger.error(f"Unexpected error in handle_deposit_txid for user {user_id}: {e}")
         await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
@@ -1858,6 +1892,7 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
     try:
@@ -1874,11 +1909,23 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
             f"🆔 *Transaction ID*: `{transaction_id}`\n"
             f"📩 Reply with /confirm_{user_id}_{message_id} or /reject_{user_id}_{message_id}"
         )
-        await context.bot.send_message(
-            chat_id=DEFAULT_ADMIN_ID,
-            text=admin_message,
-            parse_mode="Markdown"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=DEFAULT_ADMIN_ID,
+                text=admin_message,
+                parse_mode="Markdown"
+            )
+        except telegram.error.TelegramError as e:
+            logger.error(f"Error sending withdrawal request to admin for user {user_id}: {e}")
+            error_message = messages[lang]["admin_error"]
+            if "blocked" in str(e).lower():
+                error_message += "\n📌 Admin has blocked the bot. Please contact support."
+            await update.message.reply_text(
+                error_message,
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
 
         await update.message.reply_text(
             messages[lang]["withdraw_success"],
@@ -1887,13 +1934,14 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
         )
         context.user_data.clear()
         return ConversationHandler.END
-    except telegram.error.TelegramError as e:
-        logger.error(f"Error sending withdrawal request to admin for user {user_id}: {e}")
+    except psycopg2.Error as e:
+        logger.error(f"Database error for user {user_id}: {e}")
         await update.message.reply_text(
-            messages[lang]["admin_error"],
+            messages[lang]["db_error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
     except Exception as e:
         logger.error(f"Error in handle_withdraw_address for user {user_id}: {e}")
