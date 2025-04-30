@@ -1663,6 +1663,69 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data.clear()
         return ConversationHandler.END
 
+async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle deposit network selection."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"User {user_id} selected network: {query.data}")
+
+    try:
+        if query.data.startswith("network_"):
+            network = query.data.split("_")[1]
+            if network not in wallet_addresses:
+                logger.error(f"Invalid network selected by user {user_id}: {network}")
+                await query.message.reply_text(
+                    messages[lang]["error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+
+            context.user_data["network"] = network
+            await query.message.reply_text(
+                messages[lang]["wallet"](network, wallet_addresses[network]),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                ])
+            )
+            await query.message.reply_text(
+                messages[lang]["ask_txid"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                ])
+            )
+            return DEPOSIT_TXID
+        elif query.data == "back_to_menu":
+            context.user_data.clear()
+            await query.message.reply_text(
+                messages[lang]["main_menu"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+        else:
+            logger.warning(f"Unexpected callback data for user {user_id}: {query.data}")
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in handle_deposit_network for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END        
+
 async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle deposit TXID or screenshot."""
     user_id = update.effective_user.id
@@ -2217,7 +2280,7 @@ def main():
                 CallbackQueryHandler(handle_plant_seed, pattern=r"^(plant_\d+|wallet)$"),
                 CallbackQueryHandler(handle_harvest_seed, pattern=r"^(harvest_\d+|wallet)$"),
                 CallbackQueryHandler(handle_language_callback, pattern=r"^lang_(fa|en)$"),
-                CallbackQueryHandler(handle_deposit_network, pattern=r"^network_(TRC20|BEP20)$"),
+                CallbackQueryHandler(handle_deposit_network, pattern=r"^(network_(TRC20|BEP20)|back_to_menu)$"),
             ],
             states={
                 SELECT_SEED: [
