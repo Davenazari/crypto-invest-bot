@@ -615,7 +615,7 @@ def init_db():
                             parse_mode="Markdown"
                         )
                     except Exception as e:
-                        logger.error(f"Failed to notify admin about empty seeds table: {e}")        
+                        logger.error(f"Failed to notify admin about empty seeds table: {e}")
                 conn.commit()
                 logger.info("Database initialized successfully")
     except Exception as e:
