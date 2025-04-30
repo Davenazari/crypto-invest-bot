@@ -1604,19 +1604,24 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     user = get_user(user_id)
     lang = user[0] if user else "en"
     seed_price = context.user_data.get("seed_price")
-    logger.info(f"User {user_id} entered deposit amount: {update.message.text}")
+    seed_idx = context.user_data.get("seed_idx")
+    logger.info(f"User {user_id} entered deposit amount: {update.message.text}, seed_price={seed_price}, seed_idx={seed_idx}")
 
-    if not seed_price:
+    # Validate seed_price and seed_idx
+    if not seed_price or seed_idx is None:
+        logger.error(f"Invalid seed data for user {user_id}: seed_price={seed_price}, seed_idx={seed_idx}")
         await update.message.reply_text(
             messages[lang]["invalid_data"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
     try:
-        amount = float(update.message.text)
-        if amount != seed_price:
+        amount = float(update.message.text.strip())
+        if abs(amount - seed_price) > 0.01:  # Allow small floating-point differences
+            logger.warning(f"Invalid amount entered by user {user_id}: {amount}, expected {seed_price}")
             await update.message.reply_text(
                 messages[lang]["invalid_amount"].format(seed_price),
                 parse_mode="Markdown",
@@ -1627,6 +1632,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
             return DEPOSIT_AMOUNT
 
         context.user_data["amount"] = amount
+        logger.info(f"Valid amount {amount} recorded for user {user_id}")
         await update.message.reply_text(
             messages[lang]["choose_network"],
             parse_mode="Markdown",
@@ -1637,7 +1643,8 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
             ])
         )
         return DEPOSIT_NETWORK
-    except ValueError:
+    except ValueError as ve:
+        logger.warning(f"Invalid amount format by user {user_id}: {update.message.text}, error: {ve}")
         await update.message.reply_text(
             messages[lang]["invalid_amount"].format(seed_price),
             parse_mode="Markdown",
@@ -1647,7 +1654,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return DEPOSIT_AMOUNT
     except Exception as e:
-        logger.error(f"Error in handle_deposit_amount for user {user_id}: {e}")
+        logger.error(f"Unexpected error in handle_deposit_amount for user {user_id}: {e}")
         await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
@@ -1656,60 +1663,141 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data.clear()
         return ConversationHandler.END
 
-async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle deposit network selection."""
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
+async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle deposit TXID or screenshot."""
+    user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"User {user_id} selected network: {query.data}")
+    amount = context.user_data.get("amount")
+    network = context.user_data.get("network")
+    seed_idx = context.user_data.get("seed_idx")
+    logger.info(f"User {user_id} submitted TXID or screenshot: amount={amount}, network={network}, seed_idx={seed_idx}")
+
+    if not all([amount, network, seed_idx is not None]):
+        logger.error(f"Missing data for user {user_id}: amount={amount}, network={network}, seed_idx={seed_idx}")
+        await update.message.reply_text(
+            messages[lang]["invalid_data"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
 
     try:
-        if query.data.startswith("network_"):
-            network = query.data.split("_")[1]
-            if network not in wallet_addresses:
-                await query.message.reply_text(
-                    messages[lang]["error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                return ConversationHandler.END
+        seed = SEEDS[seed_idx]
+        # Check if seeds table is populated
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT COUNT(*) FROM seeds')
+                seed_count = c.fetchone()[0]
+                if seed_count == 0:
+                    logger.error(f"Seeds table is empty for user {user_id}")
+                    # Notify admin
+                    try:
+                        await context.bot.send_message(
+                            chat_id=DEFAULT_ADMIN_ID,
+                            text="⚠️ *Error*: Seeds table is empty. Please check the database.",
+                            parse_mode="Markdown"
+                        )
+                    except telegram.error.TelegramError as te:
+                        logger.error(f"Failed to notify admin for user {user_id}: {te}")
+                    await update.message.reply_text(
+                        messages[lang]["db_error"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
 
-            context.user_data["network"] = network
-            await query.message.reply_text(
-                messages[lang]["wallet"](network, wallet_addresses[network]),
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
+                # Check if seed exists in database
+                c.execute('SELECT seed_id FROM seeds WHERE name = %s', (seed["name"],))
+                result = c.fetchone()
+                if not result:
+                    logger.error(f"No seed found in database for name: {seed['name']} for user {user_id}")
+                    await update.message.reply_text(
+                        messages[lang]["db_error"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+                seed_id = result[0]
+
+        message_text = update.message.text or update.message.caption or "No TXID provided"
+        message_id = update.message.message_id
+
+        # Save screenshot if provided
+        if update.message.photo:
+            photo = update.message.photo[-1]
+            file = await photo.get_file()
+            file_path = f"deposits/{user_id}_{photo.file_id}.jpg"
+            os.makedirs("deposits", exist_ok=True)
+            await file.download_to_drive(file_path)
+            message_text = f"Screenshot: {file_path}"
+            logger.info(f"Screenshot saved for user {user_id}: {file_path}")
+
+        # Insert transaction
+        transaction_id = insert_transaction(
+            user_id, amount, network, "pending", "deposit",
+            message_id, seed_id=seed_id
+        )
+        logger.info(f"Transaction inserted for user {user_id}: transaction_id={transaction_id}")
+
+        # Send message to admin
+        admin_message = (
+            f"📥 *New Deposit Request*\n"
+            f"👤 *User ID*: `{user_id}`\n"
+            f"💰 *Amount*: `{amount}` USDT\n"
+            f"📲 *Network*: `{network}`\n"
+            f"🌱 *Seed*: `{seed['name_fa' if lang == 'fa' else 'name']}`\n"
+            f"📝 *TXID/Screenshot*: `{message_text}`\n"
+            f"🆔 *Transaction ID*: `{transaction_id}`\n"
+            f"📩 Reply with /confirm_{user_id}_{message_id} or /reject_{user_id}_{message_id}"
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=DEFAULT_ADMIN_ID,
+                text=admin_message,
+                parse_mode="Markdown"
             )
-            await query.message.reply_text(
-                messages[lang]["ask_txid"],
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
-            )
-            return DEPOSIT_TXID
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
-            await query.message.reply_text(
-                messages[lang]["main_menu"],
+            if update.message.photo:
+                await context.bot.send_photo(
+                    chat_id=DEFAULT_ADMIN_ID,
+                    photo=open(file_path, "rb")
+                )
+                os.remove(file_path)  # Clean up screenshot file
+                logger.info(f"Screenshot sent to admin and deleted for user {user_id}")
+        except telegram.error.TelegramError as e:
+            logger.error(f"Error sending message to admin for user {user_id}: {e}")
+            error_message = messages[lang]["admin_error"]
+            if "blocked" in str(e).lower():
+                error_message += "\n📌 Admin has blocked the bot. Please contact support."
+            await update.message.reply_text(
+                error_message,
                 parse_mode="Markdown",
                 reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
-        else:
-            await query.message.reply_text(
-                messages[lang]["error"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
+
+        await update.message.reply_text(
+            messages[lang]["success"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        logger.info(f"Deposit process completed for user {user_id}")
+        return ConversationHandler.END
+
+    except psycopg2.Error as e:
+        logger.error(f"Database error for user {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["db_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
     except Exception as e:
-        logger.error(f"Error in handle_deposit_network for user {user_id}: {e}")
-        await query.message.reply_text(
+        logger.error(f"Unexpected error in handle_deposit_txid for user {user_id}: {e}")
+        await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
