@@ -616,6 +616,23 @@ def init_db():
                         )
                     except Exception as e:
                         logger.error(f"Failed to notify admin about empty seeds table: {e}")
+                # Check if seed_id column exists in transactions table
+                c.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'transactions' AND column_name = 'seed_id'
+                """)
+                if not c.fetchone():
+                    c.execute('''
+                        ALTER TABLE transactions
+                        ADD COLUMN seed_id INTEGER
+                    ''')
+                    c.execute('''
+                        ALTER TABLE transactions
+                        ADD CONSTRAINT transactions_seed_id_fkey
+                        FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
+                    ''')
+                    logger.info("Added seed_id column and foreign key to transactions table")
                 conn.commit()
                 logger.info("Database initialized successfully")
     except Exception as e:
