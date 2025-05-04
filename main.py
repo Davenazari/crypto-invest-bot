@@ -1879,7 +1879,17 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('SELECT seed_id FROM seeds WHERE name = %s', (seed["name"],))
-                seed_id = c.fetchone()[0]
+                result = c.fetchone()
+                if not result:
+                    logger.error(f"No seed found with name {seed['name']} for user {user_id}")
+                    await update.message.reply_text(
+                        messages[lang]["db_error"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    context.user_data.clear()
+                    return ConversationHandler.END
+                seed_id = result[0]
                 transaction_id = insert_transaction(
                     user_id, amount, network, "pending", "deposit", message_id, seed_id=seed_id
                 )
