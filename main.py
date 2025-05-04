@@ -2378,7 +2378,10 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CallbackQueryHandler(handle_menu_callback, pattern=r"^(buy_seed|wallet|referral|language|support|back_to_menu|withdraw|history|plant_seed|harvest_seed)$"),
+            CallbackQueryHandler(
+                handle_menu_callback,
+                pattern=r"^(buy_seed|wallet|referral|language|support|back_to_menu|withdraw|history|plant_seed|harvest_seed)$"
+            ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
             CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase)$"),
             CallbackQueryHandler(handle_deposit_network, pattern=r"^network_.*$"),
@@ -2387,14 +2390,20 @@ def main():
         ],
         states={
             SELECT_SEED: [
-                CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|back_to_menu)$"),
+                CallbackQueryHandler(
+                    handle_seed_selection,
+                    pattern=r"^(seed_\d+|confirm_seed_purchase|back_to_menu)$"
+                ),
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deposit_amount),
                 CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),
             ],
             DEPOSIT_NETWORK: [
-                CallbackQueryHandler(handle_deposit_network, pattern=r"^(network_.*|back_to_menu)$"),
+                CallbackQueryHandler(
+                    handle_deposit_network,
+                    pattern=r"^(network_.*|back_to_menu)$"
+                ),
             ],
             DEPOSIT_TXID: [
                 MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
@@ -2409,12 +2418,18 @@ def main():
                 CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             PLANT_SEED: [
-                CallbackQueryHandler(handle_plant_seed, pattern=r"^(plant_\d+|wallet|back_to_menu)$"),
+                CallbackQueryHandler(
+                    handle_plant_seed,
+                    pattern=r"^(plant_\d+|wallet|back_to_menu)$"
+                ),
             ],
             HARVEST_SEED: [
-                CallbackQueryHandler(handle_harvest_seed, pattern=r"^(harvest_\d+|wallet|back_to_menu)$"),
+                CallbackQueryHandler(
+                    handle_harvest_seed,
+                    pattern=r"^(harvest_\d+|wallet|back_to_menu)$"
+                ),
             ],
-        ],
+        },
         fallbacks=[
             CommandHandler("cancel", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
@@ -2423,8 +2438,16 @@ def main():
     )
 
     app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("approve", approve_transaction, filters=filters.Regex(r'^/approve_\d+_\d+$')))
-    app.add_handler(CommandHandler("reject", reject_transaction, filters=filters.Regex(r'^/reject_\d+_\d+$')))
+    app.add_handler(CommandHandler(
+        "approve",
+        approve_transaction,
+        filters=filters.Regex(r'^/approve_\d+_\d+$')
+    ))
+    app.add_handler(CommandHandler(
+        "reject",
+        reject_transaction,
+        filters=filters.Regex(r'^/reject_\d+_\d+$')
+    ))
     app.add_handler(CommandHandler("test_approve", test_approve))
     app.add_handler(CommandHandler("db_test", db_test))
     app.add_handler(CommandHandler("admintest", admin_test))
@@ -2432,3 +2455,6 @@ def main():
 
     logger.info("Starting bot")
     app.run_polling()
+
+if __name__ == '__main__':
+    main()
