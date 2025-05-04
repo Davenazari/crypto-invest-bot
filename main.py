@@ -1119,34 +1119,47 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     logger.info(f"User {user_id} called /start with args: {args}")
     
-    context.user_data.clear()
-    
-    referred_by = None
-    if args and args[0].startswith("ref_"):
-        try:
-            referred_by = int(args[0].split("_")[1])
-            if referred_by == user_id:
-                referred_by = None
-        except (IndexError, ValueError):
-            logger.warning(f"Invalid referral code for user {user_id}: {args[0]}")
-    
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    if not user:
-        upsert_user(user_id, language="en", referred_by=referred_by)
-        if referred_by:
-            add_referral(referred_by, user_id, 1)
-            chain = get_referral_chain(referred_by)
-            for referrer_id, level in chain:
-                if level < 3:
-                    add_referral(referrer_id, user_id, level + 1)
-    
-    await update.message.reply_text(
-        messages[lang]["welcome"],
-        parse_mode="Markdown",
-        reply_markup=get_main_menu(lang)
-    )
-    return ConversationHandler.END
+    try:
+        context.user_data.clear()
+        logger.info(f"Cleared user_data for user {user_id}")
+        
+        referred_by = None
+        if args and args[0].startswith("ref_"):
+            try:
+                referred_by = int(args[0].split("_")[1])
+                if referred_by == user_id:
+                    referred_by = None
+                logger.info(f"Referral detected for user {user_id}: referred_by {referred_by}")
+            except (IndexError, ValueError):
+                logger.warning(f"Invalid referral code for user {user_id}: {args[0]}")
+        
+        user = get_user(user_id)
+        lang = user[0] if user else "en"
+        logger.info(f"User {user_id} language: {lang}, user_data: {user}")
+        if not user:
+            logger.info(f"Creating new user {user_id} with referred_by {referred_by}")
+            upsert_user(user_id, language="en", referred_by=referred_by)
+            if referred_by:
+                add_referral(referred_by, user_id, 1)
+                chain = get_referral_chain(referred_by)
+                for referrer_id, level in chain:
+                    if level < 3:
+                        add_referral(referrer_id, user_id, level + 1)
+        
+        await update.message.reply_text(
+            messages[lang]["welcome"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        logger.info(f"Sent welcome message to user {user_id}")
+        return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in start for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text(
+            messages["en"]["error"],
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
 
 async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle language selection."""
@@ -1740,9 +1753,10 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     user = get_user(user_id)
     lang = user[0] if user else "en"
     seed_price = context.user_data.get("seed_price")
-    logger.info(f"User {user_id} entered deposit amount")
+    logger.info(f"User {user_id} entered deposit amount: {update.message.text}")
 
     if not seed_price:
+        logger.error(f"No seed_price in user_data for user {user_id}")
         await update.message.reply_text(
             messages[lang]["invalid_data"],
             parse_mode="Markdown",
@@ -1751,8 +1765,10 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
 
     try:
-        amount = float(update.message.text)
+        amount = float(update.message.text.strip())
+        logger.info(f"Parsed amount for user {user_id}: {amount}")
         if amount != seed_price:
+            logger.warning(f"Invalid amount entered by user {user_id}: {amount}, expected {seed_price}")
             await update.message.reply_text(
                 messages[lang]["invalid_amount"].format(seed_price),
                 parse_mode="Markdown",
@@ -1771,8 +1787,10 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
                 [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
             ])
         )
+        logger.info(f"Sent network selection message to user {user_id}")
         return DEPOSIT_NETWORK
-    except ValueError:
+    except ValueError as e:
+        logger.warning(f"Invalid amount format by user {user_id}: {update.message.text}, error: {e}")
         await update.message.reply_text(
             messages[lang]["invalid_amount"].format(seed_price),
             parse_mode="Markdown",
@@ -1782,7 +1800,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return DEPOSIT_AMOUNT
     except Exception as e:
-        logger.error(f"Error in handle_deposit_amount for user {user_id}: {e}")
+        logger.error(f"Error in handle_deposit_amount for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
