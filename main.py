@@ -768,19 +768,19 @@ def update_transaction_status(transaction_id, user_id, message_id, status):
         logger.error(f"Error updating transaction status for user {user_id}: {e}")
         raise
 
-def get_transaction(user_id, message_id):
-    """Retrieve a transaction."""
+def get_transaction(transaction_id):
+    """Retrieve a transaction including its ID."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('''
-                    SELECT amount, network, status, type, address, seed_id
+                    SELECT id, user_id, amount, network, status, type, address, seed_id
                     FROM transactions
-                    WHERE user_id = %s AND message_id = %s AND status = 'pending'
-                ''', (user_id, message_id))
+                    WHERE id = %s AND status = 'pending'
+                ''', (transaction_id,))
                 return c.fetchone()
     except Exception as e:
-        logger.error(f"Error getting transaction for user {user_id}: {e}")
+        logger.error(f"Error getting transaction for transaction_id {transaction_id}: {e}")
         return None
 
 def get_transaction_history(user_id):
@@ -1888,7 +1888,6 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         seed = SEEDS[seed_idx]
-        transaction_id = str(uuid.uuid4())
         message_id = update.message.message_id
         
         # Insert transaction
@@ -1927,8 +1926,8 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
                     f"Seed: `{seed['name_fa' if lang == 'fa' else 'name']}`\n"
                     f"Transaction ID: `{transaction_id}`\n"
                     f"──────────────\n"
-                    f"✅ Approve: /approve_{user_id}_{message_id}\n"
-                    f"❌ Reject: /reject_{user_id}_{message_id}"
+                    f"✅ Approve: /approve_{transaction_id}\n"
+                    f"❌ Reject: /reject_{transaction_id}"
                 ),
                 parse_mode="Markdown",
                 reply_to_message_id=admin_message.message_id
@@ -2047,8 +2046,8 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
                     f"Address: `{address}`\n"
                     f"Transaction ID: `{transaction_id}`\n"
                     f"──────────────\n"
-                    f"✅ Approve: /approve_{user_id}_{message_id}\n"
-                    f"❌ Reject: /reject_{user_id}_{message_id}"
+                    f"✅ Approve: /approve_{transaction_id}\n"
+                    f"❌ Reject: /reject_{transaction_id}"
                 ),
                 parse_mode="Markdown"
             )
@@ -2102,21 +2101,20 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
     logger.info(f"Received /approve command from admin {user_id}: {update.message.text}")
     try:
         command = update.message.text.split("_")
-        if len(command) != 3:
+        if len(command) != 2:
             logger.error(f"Invalid approve command format: {update.message.text}")
             await update.message.reply_text(
-                "❌ *Error*: Invalid command format. Use /approve_{user_id}_{message_id}",
+                "❌ *Error*: Invalid command format. Use /approve_{transaction_id}",
                 parse_mode="Markdown"
             )
             return
-        target_user_id = int(command[1])
-        message_id = int(command[2])
-        logger.info(f"Admin {user_id} attempting to approve transaction for user {target_user_id}, message_id {message_id}")
+        transaction_id = int(command[1])
+        logger.info(f"Admin {user_id} attempting to approve transaction_id {transaction_id}")
 
         # Retrieve transaction
-        transaction = get_transaction(target_user_id, message_id)
+        transaction = get_transaction(transaction_id)
         if not transaction:
-            logger.warning(f"No pending transaction found for user {target_user_id}, message_id {message_id}")
+            logger.warning(f"No pending transaction found for transaction_id {transaction_id}")
             await update.message.reply_text(
                 "❌ *Error*: Transaction not found or already processed.",
                 parse_mode="Markdown"
@@ -2124,7 +2122,7 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         # Unpack transaction
-        transaction_id, amount, network, status, type, address, seed_id = transaction
+        transaction_id, target_user_id, amount, network, status, type, address, seed_id = transaction
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
         # Update transaction status
@@ -2185,7 +2183,7 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         logger.info(f"Transaction {transaction_id} approved successfully")
     except Exception as e:
-        logger.error(f"Error in approve_transaction for user {target_user_id}, message_id {message_id}: {e}", exc_info=True)
+        logger.error(f"Error in approve_transaction for transaction_id {transaction_id}: {e}")
         await update.message.reply_text(
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
@@ -2205,21 +2203,20 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     logger.info(f"Received /reject command from admin {user_id}: {update.message.text}")
     try:
         command = update.message.text.split("_")
-        if len(command) != 3:
+        if len(command) != 2:
             logger.error(f"Invalid reject command format: {update.message.text}")
             await update.message.reply_text(
-                "❌ *Error*: Invalid command format. Use /reject_{user_id}_{message_id}",
+                "❌ *Error*: Invalid command format. Use /reject_{transaction_id}",
                 parse_mode="Markdown"
             )
             return
-        target_user_id = int(command[1])
-        message_id = int(command[2])
-        logger.info(f"Admin {user_id} attempting to reject transaction for user {target_user_id}, message_id {message_id}")
+        transaction_id = int(command[1])
+        logger.info(f"Admin {user_id} attempting to reject transaction_id {transaction_id}")
 
         # Retrieve transaction
-        transaction = get_transaction(target_user_id, message_id)
+        transaction = get_transaction(transaction_id)
         if not transaction:
-            logger.warning(f"No pending transaction found for user {target_user_id}, message_id {message_id}")
+            logger.warning(f"No pending transaction found for transaction_id {transaction_id}")
             await update.message.reply_text(
                 "❌ *Error*: Transaction not found or already processed.",
                 parse_mode="Markdown"
@@ -2227,7 +2224,7 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
         # Unpack transaction
-        transaction_id, amount, network, status, type, address, seed_id = transaction
+        transaction_id, target_user_id, amount, network, status, type, address, seed_id = transaction
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
         # Update transaction status
@@ -2275,7 +2272,7 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         logger.info(f"Transaction {transaction_id} rejected successfully")
     except Exception as e:
-        logger.error(f"Error in reject_transaction for user {target_user_id}, message_id {message_id}: {e}", exc_info=True)
+        logger.error(f"Error in reject_transaction for transaction_id {transaction_id}: {e}")
         await update.message.reply_text(
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
@@ -2441,12 +2438,12 @@ def main():
     app.add_handler(CommandHandler(
         "approve",
         approve_transaction,
-        filters=filters.Regex(r'^/approve_\d+_\d+$')
+        filters=filters.Regex(r'^/approve_\d+$')
     ))
     app.add_handler(CommandHandler(
         "reject",
         reject_transaction,
-        filters=filters.Regex(r'^/reject_\d+_\d+$')
+        filters=filters.Regex(r'^/reject_\d+$')
     ))
     app.add_handler(CommandHandler("test_approve", test_approve))
     app.add_handler(CommandHandler("db_test", db_test))
