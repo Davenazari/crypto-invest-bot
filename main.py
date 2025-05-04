@@ -2137,7 +2137,12 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         if action == "approve":
             # Update transaction status
-            update_transaction_status(transaction_id, "confirmed")
+            if not update_transaction_status(transaction_id, "confirmed"):
+                await query.message.reply_text(
+                    "❌ *Error*: Transaction already processed or not found.",
+                    parse_mode="Markdown"
+                )
+                return
             
             # Handle deposit or withdrawal
             if type == "deposit" and seed_id:
@@ -2193,7 +2198,12 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             logger.info(f"Transaction {transaction_id} approved successfully")
         elif action == "reject":
             # Update transaction status
-            update_transaction_status(transaction_id, "rejected")
+            if not update_transaction_status(transaction_id, "rejected"):
+                await query.message.reply_text(
+                    "❌ *Error*: Transaction already processed or not found.",
+                    parse_mode="Markdown"
+                )
+                return
             
             # Notify user
             if type == "deposit":
@@ -2245,7 +2255,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.reply_text(
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
-        )        
+        )
 
 async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle transaction approval by admin."""
@@ -2258,11 +2268,12 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
-    logger.info(f"Received /approve command from admin {user_id}: {update.message.text}")
+    command_text = update.message.text
+    logger.info(f"Received /approve command from admin {user_id}: {command_text}")
     try:
-        command = update.message.text.split("_")
+        command = command_text.split("_")
         if len(command) != 2:
-            logger.error(f"Invalid approve command format: {update.message.text}")
+            logger.error(f"Invalid approve command format: {command_text}")
             await update.message.reply_text(
                 "❌ *Error*: Invalid command format. Use /approve_{transaction_id}",
                 parse_mode="Markdown"
@@ -2286,7 +2297,12 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
         # Update transaction status
-        update_transaction_status(transaction_id, "confirmed")
+        if not update_transaction_status(transaction_id, "confirmed"):
+            await update.message.reply_text(
+                "❌ *Error*: Transaction already processed or not found.",
+                parse_mode="Markdown"
+            )
+            return
         
         # Handle deposit or withdrawal
         user = get_user(target_user_id)
@@ -2360,11 +2376,12 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    logger.info(f"Received /reject command from admin {user_id}: {update.message.text}")
+    command_text = update.message.text
+    logger.info(f"Received /reject command from admin {user_id}: {command_text}")
     try:
-        command = update.message.text.split("_")
+        command = command_text.split("_")
         if len(command) != 2:
-            logger.error(f"Invalid reject command format: {update.message.text}")
+            logger.error(f"Invalid reject command format: {command_text}")
             await update.message.reply_text(
                 "❌ *Error*: Invalid command format. Use /reject_{transaction_id}",
                 parse_mode="Markdown"
@@ -2388,7 +2405,12 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
         # Update transaction status
-        update_transaction_status(transaction_id, "rejected")
+        if not update_transaction_status(transaction_id, "rejected"):
+            await update.message.reply_text(
+                "❌ *Error*: Transaction already processed or not found.",
+                parse_mode="Markdown"
+            )
+            return
         
         # Notify user
         user = get_user(target_user_id)
@@ -2463,20 +2485,6 @@ async def test_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-def get_transaction(user_id, message_id):
-    """Retrieve a transaction including its ID."""
-    try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('''
-                    SELECT id, amount, network, status, type, address, seed_id
-                    FROM transactions
-                    WHERE user_id = %s AND message_id = %s AND status = 'pending'
-                ''', (user_id, message_id))
-                return c.fetchone()
-    except Exception as e:
-        logger.error(f"Error getting transaction for user {user_id}, message_id {message_id}: {e}")
-        return None
 
 def update_transaction_status(transaction_id, status):
     """Update transaction status using transaction ID."""
@@ -2488,8 +2496,12 @@ def update_transaction_status(transaction_id, status):
                     SET status = %s
                     WHERE id = %s AND status = 'pending'
                 ''', (status, transaction_id))
+                if c.rowcount == 0:
+                    logger.warning(f"No pending transaction found for transaction_id {transaction_id} to update to {status}")
+                    return False
                 conn.commit()
                 logger.info(f"Updated transaction status for transaction_id {transaction_id} to {status}")
+                return True
     except Exception as e:
         logger.error(f"Error updating transaction status for transaction_id {transaction_id}: {e}")
         raise
