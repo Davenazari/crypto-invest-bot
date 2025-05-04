@@ -1162,51 +1162,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle language selection."""
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    logger.info(f"User {user_id} triggered language callback: {query.data}")
+      """Handle language selection callbacks."""
+      query = update.callback_query
+      await query.answer()
+      user_id = query.from_user.id
+      user = get_user(user_id)
+      lang = user[0] if user else "en"
+      logger.info(f"User {user_id} triggered language callback: {query.data}")
 
-    try:
-        if query.data in ["lang_fa", "lang_en"]:
-            new_lang = query.data.split("_")[1]
-            if new_lang not in ["fa", "en"]:
-                logger.error(f"Invalid language selected by user {user_id}: {new_lang}")
-                await query.message.reply_text(
-                    messages[lang]["language_error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                return ConversationHandler.END
-            upsert_user(user_id, language=new_lang)
-            logger.info(f"Language updated for user {user_id} to {new_lang}")
-            context.user_data.clear()
-            await query.message.reply_text(
-                messages[new_lang]["language_updated"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(new_lang)
-            )
-            return ConversationHandler.END
-        else:
-            logger.warning(f"Unexpected language callback data for user {user_id}: {query.data}")
-            await query.message.reply_text(
-                messages[lang]["error"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
-    except Exception as e:
-        logger.error(f"Error in handle_language_callback for user {user_id}: {e}")
-        await query.message.reply_text(
-            messages[lang]["language_error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
-        )
-        context.user_data.clear()
-        return ConversationHandler.END
+      try:
+          if query.data.startswith("lang_"):
+              new_lang = query.data.split("_")[1]
+              if new_lang in ["fa", "en"]:
+                  upsert_user(user_id, language=new_lang)
+                  logger.info(f"Updated language for user {user_id} to {new_lang}")
+                  await query.message.reply_text(
+                      messages[new_lang]["language_updated"],
+                      parse_mode="Markdown",
+                      reply_markup=get_main_menu(new_lang)
+                  )
+              else:
+                  logger.warning(f"Invalid language selected by user {user_id}: {new_lang}")
+                  await query.message.reply_text(
+                      messages[lang]["error"],
+                      parse_mode="Markdown",
+                      reply_markup=get_main_menu(lang)
+                  )
+          else:
+              logger.warning(f"Unhandled language callback for user {user_id}: {query.data}")
+              await query.message.reply_text(
+                  messages[lang]["error"],
+                  parse_mode="Markdown",
+                  reply_markup=get_main_menu(lang)
+              )
+          return ConversationHandler.END
+      except Exception as e:
+          logger.error(f"Error in handle_language_callback for user {user_id}: {e}", exc_info=True)
+          await query.message.reply_text(
+              messages[lang]["error"],
+              parse_mode="Markdown",
+              reply_markup=get_main_menu(lang)
+          )
+          return ConversationHandler.END
 
 async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle menu button callbacks."""
@@ -1753,7 +1750,8 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     user = get_user(user_id)
     lang = user[0] if user else "en"
     seed_price = context.user_data.get("seed_price")
-    logger.info(f"User {user_id} entered deposit amount: {update.message.text}")
+    input_text = update.message.text.strip()
+    logger.info(f"User {user_id} entered deposit amount: '{input_text}'")
 
     if not seed_price:
         logger.error(f"No seed_price in user_data for user {user_id}")
@@ -1765,7 +1763,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
 
     try:
-        amount = float(update.message.text.strip())
+        amount = float(input_text)
         logger.info(f"Parsed amount for user {user_id}: {amount}")
         if amount != seed_price:
             logger.warning(f"Invalid amount entered by user {user_id}: {amount}, expected {seed_price}")
@@ -1790,7 +1788,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info(f"Sent network selection message to user {user_id}")
         return DEPOSIT_NETWORK
     except ValueError as e:
-        logger.warning(f"Invalid amount format by user {user_id}: {update.message.text}, error: {e}")
+        logger.warning(f"Invalid amount format by user {user_id}: '{input_text}', error: {e}")
         await update.message.reply_text(
             messages[lang]["invalid_amount"].format(seed_price),
             parse_mode="Markdown",
@@ -2289,7 +2287,7 @@ def main():
             CommandHandler("cancel", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
         ],
-        per_message=True  # Prevents PTBUserWarning
+        per_message=False  # Prevents PTBUserWarning
     )
 
     app.add_handler(conv_handler)
