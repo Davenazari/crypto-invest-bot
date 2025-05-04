@@ -2100,20 +2100,38 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     try:
         command = update.message.text.split("_")
+        if len(command) != 3:
+            logger.error(f"Invalid approve command format: {update.message.text}")
+            await update.message.reply_text(
+                "❌ *Error*: Invalid command format. Use /approve_{user_id}_{message_id}",
+                parse_mode="Markdown"
+            )
+            return
         target_user_id = int(command[1])
         message_id = int(command[2])
+        logger.info(f"Admin {user_id} attempting to approve transaction for user {target_user_id}, message_id {message_id}")
+
+        # Retrieve transaction with ID
         transaction = get_transaction(target_user_id, message_id)
         if not transaction:
+            logger.warning(f"No pending transaction found for user {target_user_id}, message_id {message_id}")
             await update.message.reply_text(
                 "❌ *Error*: Transaction not found or already processed.",
                 parse_mode="Markdown"
             )
             return
 
-        amount, network, status, type, address, seed_id = transaction
-        update_transaction_status(transaction_id, target_user_id, message_id, "confirmed")
+        transaction_id, amount, network, status, type, address, seed_id = transaction
+        logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
+
+        # Update transaction status
+        update_transaction_status(transaction_id, "confirmed")
         
+        # Handle deposit or withdrawal
+        user = get_user(target_user_id)
+        lang = user[0] if user else "en"
         if type == "deposit" and seed_id:
+            logger.info(f"Adding seed {seed_id} to user {target_user_id}")
             add_user_seed(target_user_id, seed_id)
             # Update referral profits
             chain = get_referral_chain(target_user_id)
@@ -2121,33 +2139,50 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
             for referrer_id, level in chain:
                 if level in profit_rates:
                     profit_amount = round(amount * profit_rates[level], 2)
+                    logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
                     update_balance(referrer_id, profit_amount)
                     record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
-            user = get_user(target_user_id)
-            lang = user[0] if user else "en"
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text=messages[lang]["confirmed"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=target_user_id,
+                    text=messages[lang]["confirmed"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                logger.info(f"Sent confirmation message to user {target_user_id}")
+            except telegram.error.TelegramError as e:
+                logger.error(f"Failed to send confirmation message to user {target_user_id}: {e}")
+                await context.bot.send_message(
+                    chat_id=DEFAULT_ADMIN_ID,
+                    text=f"⚠️ *Warning*: Transaction approved for user {target_user_id}, but failed to notify user: {e}",
+                    parse_mode="Markdown"
+                )
         elif type == "withdrawal":
+            logger.info(f"Deducting {amount} from user {target_user_id} balance")
             update_balance(target_user_id, -amount)
-            user = get_user(target_user_id)
-            lang = user[0] if user else "en"
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text=messages[lang]["withdraw_confirmed"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=target_user_id,
+                    text=messages[lang]["withdraw_confirmed"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                logger.info(f"Sent withdrawal confirmation message to user {target_user_id}")
+            except telegram.error.TelegramError as e:
+                logger.error(f"Failed to send withdrawal confirmation to user {target_user_id}: {e}")
+                await context.bot.send_message(
+                    chat_id=DEFAULT_ADMIN_ID,
+                    text=f"⚠️ *Warning*: Withdrawal approved for user {target_user_id}, but failed to notify user: {e}",
+                    parse_mode="Markdown"
+                )
 
         await update.message.reply_text(
-            "✅ *Transaction Approved*",
+            f"✅ *Transaction Approved* (ID: {transaction_id})",
             parse_mode="Markdown"
         )
+        logger.info(f"Transaction {transaction_id} approved successfully")
     except Exception as e:
-        logger.error(f"Error in approve_transaction: {e}")
+        logger.error(f"Error in approve_transaction for user {target_user_id}, message_id {message_id}: {e}", exc_info=True)
         await update.message.reply_text(
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
@@ -2165,45 +2200,110 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     try:
         command = update.message.text.split("_")
+        if len(command) != 3:
+            logger.error(f"Invalid reject command format: {update.message.text}")
+            await update.message.reply_text(
+                "❌ *Error*: Invalid command format. Use /reject_{user_id}_{message_id}",
+                parse_mode="Markdown"
+            )
+            return
         target_user_id = int(command[1])
         message_id = int(command[2])
+        logger.info(f"Admin {user_id} attempting to reject transaction for user {target_user_id}, message_id {message_id}")
+
+        # Retrieve transaction with ID
         transaction = get_transaction(target_user_id, message_id)
         if not transaction:
+            logger.warning(f"No pending transaction found for user {target_user_id}, message_id {message_id}")
             await update.message.reply_text(
                 "❌ *Error*: Transaction not found or already processed.",
                 parse_mode="Markdown"
             )
             return
 
-        amount, network, status, type, address, seed_id = transaction
-        update_transaction_status(transaction_id, target_user_id, message_id, "rejected")
+        transaction_id, amount, network, status, type, address, seed_id = transaction
+        logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
+
+        # Update transaction status
+        update_transaction_status(transaction_id, "rejected")
+        
+        # Notify user
         user = get_user(target_user_id)
         lang = user[0] if user else "en"
         if type == "deposit":
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text=messages[lang]["rejected"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=target_user_id,
+                    text=messages[lang]["rejected"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                logger.info(f"Sent rejection message to user {target_user_id} for deposit")
+            except telegram.error.TelegramError as e:
+                logger.error(f"Failed to send rejection message to user {target_user_id}: {e}")
+                await context.bot.send_message(
+                    chat_id=DEFAULT_ADMIN_ID,
+                    text=f"⚠️ *Warning*: Deposit rejected for user {target_user_id}, but failed to notify user: {e}",
+                    parse_mode="Markdown"
+                )
         elif type == "withdrawal":
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text=messages[lang]["withdraw_rejected"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=target_user_id,
+                    text=messages[lang]["withdraw_rejected"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                logger.info(f"Sent withdrawal rejection message to user {target_user_id}")
+            except telegram.error.TelegramError as e:
+                logger.error(f"Failed to send withdrawal rejection to user {target_user_id}: {e}")
+                await context.bot.send_message(
+                    chat_id=DEFAULT_ADMIN_ID,
+                    text=f"⚠️ *Warning*: Withdrawal rejected for user {target_user_id}, but failed to notify user: {e}",
+                    parse_mode="Markdown"
+                )
 
         await update.message.reply_text(
-            "❌ *Transaction Rejected*",
+            f"❌ *Transaction Rejected* (ID: {transaction_id})",
             parse_mode="Markdown"
         )
+        logger.info(f"Transaction {transaction_id} rejected successfully")
     except Exception as e:
-        logger.error(f"Error in reject_transaction: {e}")
+        logger.error(f"Error in reject_transaction for user {target_user_id}, message_id {message_id}: {e}", exc_info=True)
         await update.message.reply_text(
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
         )
+def get_transaction(user_id, message_id):
+    """Retrieve a transaction including its ID."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    SELECT id, amount, network, status, type, address, seed_id
+                    FROM transactions
+                    WHERE user_id = %s AND message_id = %s AND status = 'pending'
+                ''', (user_id, message_id))
+                return c.fetchone()
+    except Exception as e:
+        logger.error(f"Error getting transaction for user {user_id}, message_id {message_id}: {e}")
+        return None
+
+def update_transaction_status(transaction_id, status):
+    """Update transaction status using transaction ID."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    UPDATE transactions
+                    SET status = %s
+                    WHERE id = %s AND status = 'pending'
+                ''', (status, transaction_id))
+                conn.commit()
+                logger.info(f"Updated transaction status for transaction_id {transaction_id} to {status}")
+    except Exception as e:
+        logger.error(f"Error updating transaction status for transaction_id {transaction_id}: {e}")
+        raise        
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancel the current operation."""
