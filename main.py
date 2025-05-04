@@ -2092,12 +2092,14 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Handle transaction approval by admin."""
     user_id = update.effective_user.id
     if user_id != DEFAULT_ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt by user {user_id}")
         await update.message.reply_text(
             messages["en"]["unauthorized"],
             parse_mode="Markdown"
         )
         return
 
+    logger.info(f"Received /approve command from admin {user_id}: {update.message.text}")
     try:
         command = update.message.text.split("_")
         if len(command) != 3:
@@ -2121,7 +2123,7 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
-        # Unpack transaction (includes id)
+        # Unpack transaction
         transaction_id, amount, network, status, type, address, seed_id = transaction
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
@@ -2193,12 +2195,14 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Handle transaction rejection by admin."""
     user_id = update.effective_user.id
     if user_id != DEFAULT_ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt by user {user_id}")
         await update.message.reply_text(
             messages["en"]["unauthorized"],
             parse_mode="Markdown"
         )
         return
 
+    logger.info(f"Received /reject command from admin {user_id}: {update.message.text}")
     try:
         command = update.message.text.split("_")
         if len(command) != 3:
@@ -2222,7 +2226,7 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
 
-        # Unpack transaction (includes id)
+        # Unpack transaction
         transaction_id, amount, network, status, type, address, seed_id = transaction
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
@@ -2281,12 +2285,14 @@ async def test_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Test if admin can execute approve commands."""
     user_id = update.effective_user.id
     if user_id != DEFAULT_ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt by user {user_id}")
         await update.message.reply_text(
             messages["en"]["unauthorized"],
             parse_mode="Markdown"
         )
         return
 
+    logger.info(f"Admin {user_id} executed /test_approve")
     try:
         await update.message.reply_text(
             "✅ *Test Approve Command*\nThis command works! Please try an actual /approve_{user_id}_{message_id} command.",
@@ -2299,6 +2305,7 @@ async def test_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
         )
+
 def get_transaction(user_id, message_id):
     """Retrieve a transaction including its ID."""
     try:
@@ -2390,7 +2397,7 @@ def main():
                 CallbackQueryHandler(handle_deposit_network, pattern=r"^(network_.*|back_to_menu)$"),
             ],
             DEPOSIT_TXID: [
-                MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),  # حذف filters.DOCUMENT
+                MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
                 CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),
             ],
             WITHDRAW_AMOUNT: [
@@ -2407,23 +2414,21 @@ def main():
             HARVEST_SEED: [
                 CallbackQueryHandler(handle_harvest_seed, pattern=r"^(harvest_\d+|wallet|back_to_menu)$"),
             ],
-        },
+        ],
         fallbacks=[
             CommandHandler("cancel", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
         ],
-        per_message=False  # Prevents PTBUserWarning
+        per_message=False
     )
 
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("approve", approve_transaction, filters=filters.Regex(r'^/approve_\d+_\d+$')))
     app.add_handler(CommandHandler("reject", reject_transaction, filters=filters.Regex(r'^/reject_\d+_\d+$')))
+    app.add_handler(CommandHandler("test_approve", test_approve))
     app.add_handler(CommandHandler("db_test", db_test))
     app.add_handler(CommandHandler("admintest", admin_test))
     app.add_error_handler(error_handler)
 
     logger.info("Starting bot")
     app.run_polling()
-
-if __name__ == "__main__":
-    main()
