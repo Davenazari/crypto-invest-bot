@@ -1916,6 +1916,13 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
                 from_chat_id=user_id,
                 message_id=message_id
             )
+            # Create inline buttons for approve and reject
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Approve", callback_data=f"approve_{transaction_id}"),
+                    InlineKeyboardButton("❌ Reject", callback_data=f"reject_{transaction_id}")
+                ]
+            ]
             await context.bot.send_message(
                 chat_id=DEFAULT_ADMIN_ID,
                 text=(
@@ -1925,12 +1932,11 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
                     f"Network: `{network}`\n"
                     f"Seed: `{seed['name_fa' if lang == 'fa' else 'name']}`\n"
                     f"Transaction ID: `{transaction_id}`\n"
-                    f"──────────────\n"
-                    f"✅ Approve: /approve_{transaction_id}\n"
-                    f"❌ Reject: /reject_{transaction_id}"
+                    f"──────────────"
                 ),
                 parse_mode="Markdown",
-                reply_to_message_id=admin_message.message_id
+                reply_to_message_id=admin_message.message_id,
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
         except telegram.error.TelegramError as e:
             logger.error(f"Error forwarding TXID to admin for user {user_id}: {e}")
@@ -2037,6 +2043,13 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
 
         # Forward to admin
         try:
+            # Create inline buttons for approve and reject
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Approve", callback_data=f"approve_{transaction_id}"),
+                    InlineKeyboardButton("❌ Reject", callback_data=f"reject_{transaction_id}")
+                ]
+            ]
             await context.bot.send_message(
                 chat_id=DEFAULT_ADMIN_ID,
                 text=(
@@ -2045,11 +2058,10 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
                     f"Amount: `{amount}` USDT\n"
                     f"Address: `{address}`\n"
                     f"Transaction ID: `{transaction_id}`\n"
-                    f"──────────────\n"
-                    f"✅ Approve: /approve_{transaction_id}\n"
-                    f"❌ Reject: /reject_{transaction_id}"
+                    f"──────────────"
                 ),
-                parse_mode="Markdown"
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
         except telegram.error.TelegramError as e:
             logger.error(f"Error sending withdrawal request to admin for user {user_id}: {e}")
@@ -2086,6 +2098,154 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
         )
         context.user_data.clear()
         return ConversationHandler.END
+
+async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle admin actions (approve/reject) from inline buttons."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt by user {user_id}")
+        await query.message.reply_text(
+            messages["en"]["unauthorized"],
+            parse_mode="Markdown"
+        )
+        return
+
+    logger.info(f"Admin {user_id} triggered action: {query.data}")
+    try:
+        action, transaction_id = query.data.split("_")
+        transaction_id = int(transaction_id)
+        logger.info(f"Admin {user_id} attempting to {action} transaction_id {transaction_id}")
+
+        # Retrieve transaction
+        transaction = get_transaction(transaction_id)
+        if not transaction:
+            logger.warning(f"No pending transaction found for transaction_id {transaction_id}")
+            await query.message.reply_text(
+                "❌ *Error*: Transaction not found or already processed.",
+                parse_mode="Markdown"
+            )
+            return
+
+        # Unpack transaction
+        transaction_id, target_user_id, amount, network, status, type, address, seed_id = transaction
+        logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
+
+        user = get_user(target_user_id)
+        lang = user[0] if user else "en"
+
+        if action == "approve":
+            # Update transaction status
+            update_transaction_status(transaction_id, "confirmed")
+            
+            # Handle deposit or withdrawal
+            if type == "deposit" and seed_id:
+                logger.info(f"Adding seed {seed_id} to user {target_user_id}")
+                add_user_seed(target_user_id, seed_id)
+                # Update referral profits
+                chain = get_referral_chain(target_user_id)
+                profit_rates = {1: 0.05, 2: 0.03, 3: 0.01}
+                for referrer_id, level in chain:
+                    if level in profit_rates:
+                        profit_amount = round(amount * profit_rates[level], 2)
+                        logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
+                        update_balance(referrer_id, profit_amount)
+                        record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
+                try:
+                    await context.bot.send_message(
+                        chat_id=target_user_id,
+                        text=messages[lang]["confirmed"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    logger.info(f"Sent confirmation message to user {target_user_id}")
+                except telegram.error.TelegramError as e:
+                    logger.error(f"Failed to send confirmation message to user {target_user_id}: {e}")
+                    await context.bot.send_message(
+                        chat_id=DEFAULT_ADMIN_ID,
+                        text=f"⚠️ *Warning*: Transaction approved for user {target_user_id}, but failed to notify user: {e}",
+                        parse_mode="Markdown"
+                    )
+            elif type == "withdrawal":
+                logger.info(f"Deducting {amount} from user {target_user_id} balance")
+                update_balance(target_user_id, -amount)
+                try:
+                    await context.bot.send_message(
+                        chat_id=target_user_id,
+                        text=messages[lang]["withdraw_confirmed"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    logger.info(f"Sent withdrawal confirmation message to user {target_user_id}")
+                except telegram.error.TelegramError as e:
+                    logger.error(f"Failed to send withdrawal confirmation to user {target_user_id}: {e}")
+                    await context.bot.send_message(
+                        chat_id=DEFAULT_ADMIN_ID,
+                        text=f"⚠️ *Warning*: Withdrawal approved for user {target_user_id}, but failed to notify user: {e}",
+                        parse_mode="Markdown"
+                    )
+
+            await query.message.reply_text(
+                f"✅ *Transaction Approved* (ID: {transaction_id})",
+                parse_mode="Markdown"
+            )
+            logger.info(f"Transaction {transaction_id} approved successfully")
+        elif action == "reject":
+            # Update transaction status
+            update_transaction_status(transaction_id, "rejected")
+            
+            # Notify user
+            if type == "deposit":
+                try:
+                    await context.bot.send_message(
+                        chat_id=target_user_id,
+                        text=messages[lang]["rejected"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    logger.info(f"Sent rejection message to user {target_user_id} for deposit")
+                except telegram.error.TelegramError as e:
+                    logger.error(f"Failed to send rejection message to user {target_user_id}: {e}")
+                    await context.bot.send_message(
+                        chat_id=DEFAULT_ADMIN_ID,
+                        text=f"⚠️ *Warning*: Deposit rejected for user {target_user_id}, but failed to notify user: {e}",
+                        parse_mode="Markdown"
+                    )
+            elif type == "withdrawal":
+                try:
+                    await context.bot.send_message(
+                        chat_id=target_user_id,
+                        text=messages[lang]["withdraw_rejected"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    logger.info(f"Sent withdrawal rejection message to user {target_user_id}")
+                except telegram.error.TelegramError as e:
+                    logger.error(f"Failed to send withdrawal rejection to user {target_user_id}: {e}")
+                    await context.bot.send_message(
+                        chat_id=DEFAULT_ADMIN_ID,
+                        text=f"⚠️ *Warning*: Withdrawal rejected for user {target_user_id}, but failed to notify user: {e}",
+                        parse_mode="Markdown"
+                    )
+
+            await query.message.reply_text(
+                f"❌ *Transaction Rejected* (ID: {transaction_id})",
+                parse_mode="Markdown"
+            )
+            logger.info(f"Transaction {transaction_id} rejected successfully")
+        else:
+            logger.error(f"Invalid action for transaction_id {transaction_id}: {action}")
+            await query.message.reply_text(
+                "❌ *Error*: Invalid action.",
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        logger.error(f"Error in handle_admin_action for transaction_id {transaction_id}: {e}")
+        await query.message.reply_text(
+            f"❌ *Error*: {str(e)}",
+            parse_mode="Markdown"
+        )        
 
 async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle transaction approval by admin."""
@@ -2384,6 +2544,7 @@ def main():
             CallbackQueryHandler(handle_deposit_network, pattern=r"^network_.*$"),
             CallbackQueryHandler(handle_plant_seed, pattern=r"^plant_\d+$"),
             CallbackQueryHandler(handle_harvest_seed, pattern=r"^harvest_\d+$"),
+            CallbackQueryHandler(handle_admin_action, pattern=r"^(approve|reject)_\d+$"),
         ],
         states={
             SELECT_SEED: [
