@@ -2111,7 +2111,7 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
         message_id = int(command[2])
         logger.info(f"Admin {user_id} attempting to approve transaction for user {target_user_id}, message_id {message_id}")
 
-        # Retrieve transaction with ID
+        # Retrieve transaction
         transaction = get_transaction(target_user_id, message_id)
         if not transaction:
             logger.warning(f"No pending transaction found for user {target_user_id}, message_id {message_id}")
@@ -2121,6 +2121,7 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
+        # Unpack transaction (includes id)
         transaction_id, amount, network, status, type, address, seed_id = transaction
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
@@ -2211,7 +2212,7 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
         message_id = int(command[2])
         logger.info(f"Admin {user_id} attempting to reject transaction for user {target_user_id}, message_id {message_id}")
 
-        # Retrieve transaction with ID
+        # Retrieve transaction
         transaction = get_transaction(target_user_id, message_id)
         if not transaction:
             logger.warning(f"No pending transaction found for user {target_user_id}, message_id {message_id}")
@@ -2221,6 +2222,7 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
 
+        # Unpack transaction (includes id)
         transaction_id, amount, network, status, type, address, seed_id = transaction
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
@@ -2274,6 +2276,29 @@ async def reject_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
         )
+
+async def test_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test if admin can execute approve commands."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text(
+            messages["en"]["unauthorized"],
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        await update.message.reply_text(
+            "✅ *Test Approve Command*\nThis command works! Please try an actual /approve_{user_id}_{message_id} command.",
+            parse_mode="Markdown"
+        )
+        logger.info(f"Admin {user_id} successfully tested approve command")
+    except Exception as e:
+        logger.error(f"Error in test_approve for admin {user_id}: {e}", exc_info=True)
+        await update.message.reply_text(
+            f"❌ *Error*: {str(e)}",
+            parse_mode="Markdown"
+        )
 def get_transaction(user_id, message_id):
     """Retrieve a transaction including its ID."""
     try:
@@ -2303,7 +2328,7 @@ def update_transaction_status(transaction_id, status):
                 logger.info(f"Updated transaction status for transaction_id {transaction_id} to {status}")
     except Exception as e:
         logger.error(f"Error updating transaction status for transaction_id {transaction_id}: {e}")
-        raise        
+        raise
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancel the current operation."""
