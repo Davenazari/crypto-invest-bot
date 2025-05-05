@@ -1142,7 +1142,7 @@ def get_seed_selection_menu(lang):
         [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"], callback_data=f"seed_{idx}")]
         for idx, seed in enumerate(SEEDS)
     ]
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
     return InlineKeyboardMarkup(buttons)
 
 def get_wallet_menu(lang, balance, has_seeds):
@@ -1165,7 +1165,7 @@ def get_wallet_menu(lang, balance, has_seeds):
 def get_referral_menu(lang):
     """Generate referral menu keyboard."""
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
     ])
 
 # Error handler
