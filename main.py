@@ -1011,19 +1011,20 @@ def can_plant_seed(last_planted):
     return last_planted_date < today
 
 def can_harvest_seed(last_planted, last_harvested):
-    """Check if a seed can be harvested."""
+    """Check if a seed can be harvested (temporary test mode)."""
+    # برای تست، بذر گوجه (ID: 2) همیشه قابل برداشت است
+    return True  # این خط برای تست موقت اضافه شده
+    # کد اصلی (برای بعد از تست برگردون به این)
     if not last_planted:
         return False
     last_planted_dt = datetime.fromisoformat(last_planted).astimezone(pytz.timezone('Asia/Tehran'))
     now = datetime.now(pytz.timezone('Asia/Tehran'))
     
-    # اگر بذر امروز یا بعد از آخرین برداشت، برداشت شده، قابل برداشت نیست
     if last_harvested:
         last_harvested_dt = datetime.fromisoformat(last_harvested).astimezone(pytz.timezone('Asia/Tehran'))
         if last_harvested_dt.date() >= last_planted_dt.date():
             return False
     
-    # برداشت فقط در روز بعد از کاشت ممکن است
     return now.date() > last_planted_dt.date()
 
 # Menu generation
