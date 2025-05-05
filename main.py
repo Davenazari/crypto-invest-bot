@@ -1136,15 +1136,13 @@ def get_main_menu(lang):
         ]
     ])
 
-def get_seed_selection_menu(lang, source="main_menu"):
+def get_seed_selection_menu(lang):
     """Generate seed selection keyboard."""
     buttons = [
         [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"], callback_data=f"seed_{idx}")]
         for idx, seed in enumerate(SEEDS)
     ]
-    # تنظیم دکمه بازگشت بر اساس منشأ درخواست
-    back_callback = "back_to_menu" if source == "main_menu" else "wallet"
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data=back_callback)])
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
 
 def get_wallet_menu(lang, balance, has_seeds):
@@ -1380,14 +1378,11 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         if query.data == "buy_seed":
-            # ذخیره منشأ درخواست
-            context.user_data["source"] = "main_menu" if query.data == "buy_seed" else context.user_data.get("source", "main_menu")
-            context.user_data.clear()  # پاک کردن داده‌های قبلی
-            context.user_data["source"] = "main_menu"  # تنظیم منشأ برای خرید بذر از منوی اصلی
+            context.user_data.clear()
             await query.message.reply_text(
                 messages[lang]["select_seed"],
                 parse_mode="Markdown",
-                reply_markup=get_seed_selection_menu(lang, context.user_data["source"])
+                reply_markup=get_seed_selection_menu(lang)
             )
             return SELECT_SEED
         elif query.data == "wallet":
@@ -1417,8 +1412,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return ConversationHandler.END
 
-            # ذخیره منشأ برای بازگشت از منوی انتخاب بذر
-            context.user_data["source"] = "wallet"
             await query.message.reply_text(
                 messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
                 parse_mode="Markdown",
@@ -1656,7 +1649,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle seed selection and purchase confirmation."""
+    """Handle seed selection for purchase."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -1668,39 +1661,19 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         if query.data.startswith("seed_"):
             seed_idx = int(query.data.split("_")[1])
-            if seed_idx < 0 or seed_idx >= len(SEEDS):
-                await query.message.reply_text(
-                    messages[lang]["error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                return ConversationHandler.END
             seed = SEEDS[seed_idx]
-            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
-            weekly_profit = round(daily_profit * 7, 3)
-            monthly_profit = round(daily_profit * 30, 3)
-            total_monthly = round(seed["price"] + monthly_profit, 3)
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 2)
+            weekly_profit = round(daily_profit * 7, 2)
+            monthly_profit = round(daily_profit * 30, 2)
+            total_monthly = round(seed["price"] + monthly_profit, 2)
             context.user_data["seed_idx"] = seed_idx
             context.user_data["seed_price"] = seed["price"]
             buttons = [
-                [InlineKeyboardButton(
-                    "✅ خرید با واریز" if lang == "fa" else "✅ Buy with Deposit",
-                    callback_data="confirm_seed_purchase"
-                )]
+                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_seed_purchase")]
             ]
             if balance >= seed["price"]:
-                buttons.append([
-                    InlineKeyboardButton(
-                        "💰 خرید با موجودی" if lang == "fa" else "💰 Buy with Balance",
-                        callback_data="balance_purchase"
-                    )
-                ])
-            # استفاده از source برای تنظیم دکمه بازگشت
-            source = context.user_data.get("source", "main_menu")
-            back_callback = "back_to_menu" if source == "main_menu" else "wallet"
-            buttons.append([
-                InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data=back_callback)
-            ])
+                buttons.append([InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
             await query.message.reply_text(
                 messages[lang]["seed_info"](
                     seed["name_fa" if lang == "fa" else "name"],
@@ -1721,14 +1694,14 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
+                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
                 )
                 return ConversationHandler.END
             await query.message.reply_text(
                 messages[lang]["ask_amount"].format(seed_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
                 ])
             )
             return DEPOSIT_AMOUNT
@@ -1747,29 +1720,18 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 messages[lang]["seed_info"](
                     seed["name_fa" if lang == "fa" else "name"],
                     seed["price"],
-                    round(seed["price"] * seed["daily_profit_rate"], 3),
-                    round(seed["price"] * seed["daily_profit_rate"] * 7, 3),
-                    round(seed["price"] * seed["daily_profit_rate"] * 30, 3),
-                    round(seed["price"] + seed["price"] * seed["daily_profit_rate"] * 30, 3)
-                ),
+                    round(seed["price"] * seed["daily_profit_rate"], 2),
+                    round(seed["price"] * seed["daily_profit_rate"] * 7, 2),
+                    round(seed["price"] * seed["daily_profit_rate"] * 30, 2),
+                    round(seed["price"] + seed["price"] * seed["daily_profit_rate"] * 30, 2)
+                ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(
-                        "✅ تأیید خرید" if lang == "fa" else "✅ Confirm Purchase",
-                        callback_data="confirm_balance_purchase"
-                    )],
+                    [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_balance_purchase")],
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
                 ])
             )
             return CONFIRM_BALANCE_PURCHASE
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
-            await query.message.reply_text(
-                messages[lang]["main_menu"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
         elif query.data == "wallet":
             context.user_data.clear()
             try:
@@ -2930,7 +2892,7 @@ def main():
                 pattern=r"^(buy_seed|wallet|referral|language|support|back_to_menu|withdraw|history|plant_seed|harvest_seed)$"
             ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
-            CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase|back_to_menu)$"),  # اضافه کردن back_to_menu
+            CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"),
             CallbackQueryHandler(handle_deposit_network, pattern=r"^network_.*$"),
             CallbackQueryHandler(handle_plant_seed, pattern=r"^plant_\d+$"),
             CallbackQueryHandler(handle_harvest_seed, pattern=r"^harvest_\d+$"),
@@ -2941,22 +2903,22 @@ def main():
             SELECT_SEED: [
                 CallbackQueryHandler(
                     handle_seed_selection,
-                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase|back_to_menu|wallet)$"
+                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase|wallet)$"
                 ),
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deposit_amount),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),  # تغییر به handle_menu_callback
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             DEPOSIT_NETWORK: [
                 CallbackQueryHandler(
                     handle_deposit_network,
-                    pattern=r"^(network_.*|back_to_menu)$"
+                    pattern=r"^(network_.*|wallet)$"
                 ),
             ],
             DEPOSIT_TXID: [
                 MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),  # تغییر به handle_menu_callback
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             WITHDRAW_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_amount),
