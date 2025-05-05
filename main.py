@@ -956,94 +956,10 @@ def get_user_seed(user_id, user_seed_id):
                     JOIN seeds s ON us.seed_id = s.seed_id
                     WHERE us.id = %s AND us.user_id = %s
                 ''', (user_seed_id, user_id))
-                result = c.fetchone()
-                logger.info(f"Retrieved seed for user {user_id}, user_seed_id {user_seed_id}: {result}")
-                return result
+                return c.fetchone()
     except Exception as e:
         logger.error(f"Error getting user seed {user_seed_id} for user {user_id}: {e}")
         return None
-    
-def debug_user_seeds(user_id):
-    """Debug user seeds data for a specific user."""
-    try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('''
-                    SELECT id, seed_id, last_planted, last_harvested
-                    FROM user_seeds
-                    WHERE user_id = %s
-                ''', (user_id,))
-                results = c.fetchall()
-                logger.info(f"User seeds for user {user_id}: {results}")
-                return results
-    except Exception as e:
-        logger.error(f"Error debugging user seeds for user {user_id}: {e}")
-        return None
-
-def fix_seed_id(user_id, user_seed_id, correct_seed_id):
-    """Fix seed_id for a specific user seed."""
-    try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('''
-                    UPDATE user_seeds
-                    SET seed_id = %s
-                    WHERE user_id = %s AND id = %s
-                ''', (correct_seed_id, user_id, user_seed_id))
-                conn.commit()
-                logger.info(f"Fixed seed_id for user {user_id}, user_seed_id {user_seed_id} to {correct_seed_id}")
-    except Exception as e:
-        logger.error(f"Error fixing seed_id for user {user_id}, user_seed_id {user_seed_id}: {e}")    
-
-def fix_database(user_id):
-    """Fix seed_id in user_seeds and remove duplicate profits for a specific user."""
-    try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                # Fix seed_id in user_seeds (ID: 2 -> seed_id: 2 for tomato, others -> seed_id: 3 for cucumber)
-                c.execute('''
-                    UPDATE user_seeds
-                    SET seed_id = %s
-                    WHERE user_id = %s AND id = %s
-                ''', (2, user_id, 2))
-                c.execute('''
-                    UPDATE user_seeds
-                    SET seed_id = %s
-                    WHERE user_id = %s AND id IN (%s, %s)
-                ''', (3, user_id, 1, 3))
-                conn.commit()
-                logger.info(f"Fixed seed_id for user {user_id}")
-
-                # Remove duplicate profits and adjust balance
-                today = datetime.now(pytz.timezone('Asia/Tehran')).date().isoformat()
-                c.execute('''
-                    SELECT id, amount FROM profits
-                    WHERE user_id = %s AND DATE(created_at) = %s
-                    ORDER BY created_at
-                ''', (user_id, today))
-                profits = c.fetchall()
-                total_deducted = 0.0
-                valid_profit_ids = []
-                seen_seed_ids = set()
-
-                for profit_id, amount in profits:
-                    c.execute('SELECT seed_id FROM profits WHERE id = %s', (profit_id,))
-                    seed_id = c.fetchone()[0]
-                    if seed_id not in seen_seed_ids:
-                        valid_profit_ids.append(profit_id)
-                        seen_seed_ids.add(seed_id)
-                    else:
-                        total_deducted += amount
-                        c.execute('DELETE FROM profits WHERE id = %s', (profit_id,))
-
-                if total_deducted > 0:
-                    c.execute('UPDATE users SET balance = balance - %s WHERE user_id = %s', (total_deducted, user_id))
-                    conn.commit()
-                    logger.info(f"Removed duplicate profits for user {user_id}, deducted {total_deducted} from balance")
-
-    except Exception as e:
-        logger.error(f"Error fixing database for user {user_id}: {e}")
-        raise            
 
 def add_user_seed(user_id, seed_id):
     """Add a seed to a user's collection."""
@@ -1106,6 +1022,10 @@ def can_plant_seed(last_planted):
 
 def can_harvest_seed(last_planted, last_harvested, seed_id=None):
     """Check if a seed can be harvested."""
+    # برای تست، بذر گوجه (ID: 2) همیشه قابل برداشت است
+    if seed_id == 2:
+        return True  # فقط برای تست موقت گوجه
+    # منطق اصلی برای بقیه بذرها
     if not last_planted:
         return False
     last_planted_dt = datetime.fromisoformat(last_planted).astimezone(pytz.timezone('Asia/Tehran'))
@@ -1116,7 +1036,6 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
         if last_harvested_dt.date() >= last_planted_dt.date():
             return False
     
-    return now.date() > last_planted_dt.date()
     return now.date() > last_planted_dt.date()
 
 # Menu generation
@@ -1798,122 +1717,85 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    balance = user[1] if user else 0
-    logger.info(f"User {user_id} triggered harvest seed callback: {query.data}")
+    user_seed_id = int(query.data.split("_")[1])  # Use user_seed_id (id from user_seeds)
+    logger.info(f"User {user_id} triggered harvest seed callback: harvest_{user_seed_id}")
 
     try:
-        if query.data.startswith("harvest_"):
-            user_seed_id = int(query.data.split("_")[1])
-            user_seed = get_user_seed(user_id, user_seed_id)
-            if not user_seed:
-                logger.warning(f"User {user_id} does not own seed with user_seed_id {user_seed_id}")
-                await query.message.reply_text(
-                    messages[lang]["no_seed"],
-                    parse_mode="Markdown",
-                    reply_markup=get_wallet_menu(lang, balance, True)
-                )
-                return ConversationHandler.END
-
-            seed_id, last_planted, last_harvested, price, daily_profit_rate = user_seed
-            logger.info(f"Checking harvest for user {user_id}, seed_id {seed_id}, user_seed_id {user_seed_id}")
-
-            if not can_harvest_seed(last_planted, last_harvested, seed_id):
-                logger.info(f"Seed {seed_id} not ready for harvest by user {user_id}")
-                await query.message.reply_text(
-                    messages[lang]["harvest_not_ready"],
-                    parse_mode="Markdown",
-                    reply_markup=get_wallet_menu(lang, balance, True)
-                )
-                return ConversationHandler.END
-
-            profit_amount = round(price * daily_profit_rate, 3)
-            logger.info(f"Calculated profit for user {user_id}, seed_id {seed_id}: {profit_amount}")
-
-            update_seed_harvest(user_id, user_seed_id)
-            update_balance(user_id, profit_amount)
-            insert_profit(user_id, seed_id, profit_amount, "daily")
-
-            user_seeds = get_user_seeds(user_id)
-            buttons = [
-                [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"harvest_{seed[6]}")]
-                for seed in user_seeds if can_harvest_seed(seed[4], seed[5], seed_id=seed[6])
-            ]
-            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
+        # Get user seed
+        user_seed = get_user_seed(user_id, user_seed_id)
+        if not user_seed:
+            logger.warning(f"User {user_id} does not own seed with user_seed_id {user_seed_id}")
+            user = get_user(user_id)
+            lang = user[0] if user else "en"
             await query.message.reply_text(
-                messages[lang]["harvest_success"](profit_amount),
+                messages[lang]["no_seeds"],
                 parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-            logger.info(f"Sent harvest success message to user {user_id}")
-            return HARVEST_SEED
-
-        elif query.data == "wallet":
-            try:
-                with psycopg2.connect(DATABASE_URL) as conn:
-                    with conn.cursor() as c:
-                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
-                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
-                        transaction_count = c.fetchone()[0]
-                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
-                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
-                        c.execute('''
-                            SELECT s.name, s.name_fa
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            WHERE us.user_id = %s
-                        ''', (user_id,))
-                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        seeds_text = ", ".join(seeds) if seeds else None
-            except psycopg2.Error as e:
-                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(
-                    messages[lang]["db_error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                return ConversationHandler.END
-
-            await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
-                parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
+                reply_markup=get_wallet_menu(lang, user[1] if user else 0, True)
             )
             return ConversationHandler.END
 
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
+        # Unpack seed data
+        seed_id, last_planted, last_harvested, price, daily_profit_rate = user_seed
+
+        # Check if seed can be harvested
+        if not can_harvest_seed(last_planted, last_harvested, seed_id=seed_id):
+            logger.info(f"Seed {seed_id} not ready for harvest by user {user_id}")
+            user = get_user(user_id)
+            lang = user[0] if user else "en"
             await query.message.reply_text(
-                messages[lang]["main_menu"],
+                messages[lang]["harvest_not_ready"],
                 parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
+                reply_markup=get_wallet_menu(lang, user[1] if user else 0, True)
             )
             return ConversationHandler.END
 
-        else:
-            logger.warning(f"Unhandled harvest seed callback data for user {user_id}: {query.data}")
-            await query.message.reply_text(
-                messages[lang]["error"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
+        # Calculate daily profit
+        profit_amount = round(price * daily_profit_rate, 3)  # Daily profit
+
+        # Update last harvested time
+        update_seed_harvest(user_id, user_seed_id)
+
+        # Update user balance
+        update_balance(user_id, profit_amount)
+
+        # Record profit in profits table
+        insert_profit(user_id, seed_id, profit_amount, "daily")
+
+        # Notify user
+        user = get_user(user_id)
+        lang = user[0] if user else "en"
+        balance = user[1] if user else 0
+
+        # Generate updated harvest menu
+        user_seeds = get_user_seeds(user_id)
+        buttons = [
+            [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"harvest_{seed[6]}")]
+            for seed in user_seeds if can_harvest_seed(seed[4], seed[5], seed_id=seed[6])
+        ]
+        buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
+        await query.message.reply_text(
+            messages[lang]["harvest_success"](profit_amount),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+        logger.info(f"Sent harvest success message to user {user_id}")
+        return HARVEST_SEED  # Stay in HARVEST_SEED state to allow further harvesting
 
     except Exception as e:
         logger.error(f"Error in handle_harvest_seed for user {user_id}: {e}")
+        user = get_user(user_id)
+        lang = user[0] if user else "en"
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
-            reply_markup=get_wallet_menu(lang, balance, True)
+            reply_markup=get_wallet_menu(lang, user[1] if user else 0, True)
         )
         return ConversationHandler.END
     
 async def check_seeds(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check seeds for user 5664533861 (temporary for debugging)."""
     user_id = update.effective_user.id
-    if user_id != 5664533861:
+    if user_id != 5664533861:  # فقط برای کاربر خاص
         await update.message.reply_text("🚫 Unauthorized")
         return
     try:
@@ -1937,7 +1819,7 @@ async def check_seeds(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(response)
     except Exception as e:
         logger.error(f"Error checking seeds for user {user_id}: {e}")
-        await update.message.reply_text(f"❌ Error: {str(e)}")  
+        await update.message.reply_text(f"❌ Error: {str(e)}")    
 
 async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle deposit amount input."""
@@ -2739,10 +2621,6 @@ def main():
 
     app = ApplicationBuilder().token(token).build()
 
-    # Run fix_database for user 5664533861 at startup
-    fix_database(5664533861)
-    logger.info("Ran fix_database for user 5664533861")
-
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -2820,8 +2698,8 @@ def main():
     app.add_handler(CommandHandler("test_approve", test_approve))
     app.add_handler(CommandHandler("db_test", db_test))
     app.add_handler(CommandHandler("admintest", admin_test))
-    app.add_handler(CommandHandler("checkseeds", check_seeds))
     app.add_error_handler(error_handler)
+    app.add_handler(CommandHandler("checkseeds", check_seeds))
 
     logger.info("Starting bot")
     app.run_polling()
