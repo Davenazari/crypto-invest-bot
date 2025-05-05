@@ -965,9 +965,9 @@ def can_plant_seed(last_planted):
     return last_planted_date < today
 
 def can_harvest_seed(last_planted, last_harvested):
+    """Check if a seed can be harvested."""
     if not last_planted:
         return False
-    return True  # موقتاً برای تست
     last_planted_dt = datetime.fromisoformat(last_planted)
     now = datetime.now(pytz.timezone('Asia/Tehran'))
     last_planted_dt = last_planted_dt.astimezone(pytz.timezone('Asia/Tehran'))
@@ -1654,81 +1654,115 @@ async def handle_plant_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed harvesting by user."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    user_seed_id = int(query.data.split("_")[1])  # استفاده از user_seed_id به جای seed_id
-    logger.info(f"User {user_id} triggered harvest seed callback: harvest_{user_seed_id}")
+    seed_id = int(query.data.split("_")[1])
+    logger.info(f"User {user_id} triggered harvest seed callback: harvest_{seed_id}")
 
     try:
-        # دریافت اطلاعات بذر کاربر
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('''
-                    SELECT us.seed_id, us.last_planted, us.last_harvested, s.price, s.daily_profit_rate
-                    FROM user_seeds us
-                    JOIN seeds s ON us.seed_id = s.seed_id
-                    WHERE us.id = %s AND us.user_id = %s
-                ''', (user_seed_id, user_id))
-                user_seed = c.fetchone()
-
+        # Check if user owns the seed
+        user_seed = get_user_seed(user_id, seed_id)
         if not user_seed:
-            logger.warning(f"User {user_id} does not own seed with user_seed_id {user_seed_id}")
+            logger.warning(f"User {user_id} does not own seed {seed_id}")
             await query.message.reply_text(
-                messages["en"]["no_seeds"],
+                messages["en"]["no_seed"],
                 parse_mode="Markdown",
                 reply_markup=get_main_menu("en")
             )
             return
 
-        seed_id, last_planted, last_harvested, price, daily_profit_rate = user_seed
-
-        # بررسی امکان برداشت
-        if not can_harvest_seed(last_planted, last_harvested):
-            logger.info(f"Seed {seed_id} not ready for harvest by user {user_id}")
-            user = get_user(user_id)
-            lang = user[0] if user else "en"
+        # Check last planted time
+        last_planted = user_seed[2]
+        if not last_planted:
+            logger.warning(f"Seed {seed_id} not planted by user {user_id}")
             await query.message.reply_text(
-                messages[lang]["harvest_not_ready"],
+                messages["en"]["seed_not_planted"],
                 parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, user[1], True)
+                reply_markup=get_main_menu("en")
             )
             return
 
-        # محاسبه سود روزانه
-        profit_amount = round(price * daily_profit_rate, 3)  # سود روزانه
-        current_time = dt.datetime.now(dt.UTC).isoformat()
+        # Get seed details
+        seed = get_seed(seed_id)
+        if not seed:
+            logger.error(f"Seed {seed_id} not found in database")
+            await query.message.reply_text(
+                messages["en"]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu("en")
+            )
+            return
 
-        # به‌روزرسانی زمان برداشت
-        update_seed_harvest(user_id, user_seed_id)
-        logger.info(f"Updated last harvested for user {user_id}, seed {seed_id}")
+        # Calculate profit
+        current_time = datetime.utcnow()
+        time_diff = (current_time - last_planted).total_seconds() / 3600  # Hours
+        profit_per_hour = seed[3]  # Assuming profit_per_hour is in seeds table
+        profit_amount = round(time_diff * profit_per_hour, 2)
 
-        # به‌روزرسانی موجودی کاربر
+        if profit_amount <= 0:
+            logger.info(f"No profit to harvest for user {user_id}, seed {seed_id}")
+            await query.message.reply_text(
+                messages["en"]["no_profit"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu("en")
+            )
+            return
+
+        # Update last harvested time
+        try:
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor() as c:
+                    c.execute('''
+                        UPDATE user_seeds
+                        SET last_harvested = %s
+                        WHERE user_id = %s AND seed_id = %s
+                    ''', (current_time, user_id, seed_id))
+                    conn.commit()
+                    logger.info(f"Updated last harvested for user {user_id}, seed {seed_id}")
+        except Exception as e:
+            logger.error(f"Error updating last harvested for user {user_id}, seed {seed_id}: {e}")
+            await query.message.reply_text(
+                messages["en"]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu("en")
+            )
+            return
+
+        # Update user balance
         update_balance(user_id, profit_amount)
         logger.info(f"Updated balance for user {user_id}: added {profit_amount}")
 
-        # ثبت سود در جدول profits
-        insert_profit(user_id, seed_id, profit_amount, "daily")
-        logger.info(f"Inserted profit for user {user_id}: seed_id {seed_id}, amount {profit_amount}")
+        # Record profit in profits table (with seed_id)
+        try:
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor() as c:
+                    c.execute('''
+                        INSERT INTO profits (user_id, seed_id, amount, created_at)
+                        VALUES (%s, %s, %s, %s)
+                    ''', (user_id, seed_id, profit_amount, current_time))
+                    conn.commit()
+                    logger.info(f"Inserted profit for user {user_id}: seed_id {seed_id}, amount {profit_amount}")
+        except Exception as e:
+            logger.error(f"Error inserting profit for user {user_id}: {e}")
+            raise  # Re-raise to ensure error is logged and handled
 
-        # اطلاع‌رسانی به کاربر
+        # Notify user
         user = get_user(user_id)
         lang = user[0] if user else "en"
         await query.message.reply_text(
-            messages[lang]["harvest_success"](profit_amount),
-            parse_mode="Markdown",
-            reply_markup=get_wallet_menu(lang, user[1], True)
-        )
-        logger.info(f"Sent harvest success message to user {user_id}")
-
-    except Exception as e:
-        logger.error(f"Error in handle_harvest_seed for user {user_id}: {e}")
-        user = get_user(user_id)
-        lang = user[0] if user else "en"
-        await query.message.reply_text(
-            messages[lang]["error"],
+            messages[lang]["harvest_success"].format(amount=profit_amount),
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
+        )
+        logger.info(f"Sent harvest success message to user {user_id}")
+    except Exception as e:
+        logger.error(f"Error in handle_harvest_seed for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages["en"]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu("en")
         )
 
 async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
