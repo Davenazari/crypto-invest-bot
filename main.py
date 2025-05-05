@@ -2798,7 +2798,7 @@ def main():
                     pattern=r"^(harvest_\d+|wallet|back_to_menu)$"
                 ),
             ],
-        ],
+        },
         fallbacks=[
             CommandHandler("cancel", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
