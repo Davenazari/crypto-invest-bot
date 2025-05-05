@@ -918,6 +918,23 @@ def get_referral_chain(user_id):
         logger.error(f"Error getting referral chain for user {user_id}: {e}")
         return []
 
+def get_user_seeds(user_id):
+    """Retrieve all seeds owned by a user."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    SELECT s.name, s.name_fa, s.price, s.daily_profit_rate, 
+                           us.last_planted, us.last_harvested, us.id
+                    FROM user_seeds us
+                    JOIN seeds s ON us.seed_id = s.seed_id
+                    WHERE us.user_id = %s
+                ''', (user_id,))
+                return c.fetchall()
+    except Exception as e:
+        logger.error(f"Error getting seeds for user {user_id}: {e}")
+        return []    
+
 def get_user_seed(user_id, user_seed_id):
     """Retrieve a specific user seed by user_seed_id."""
     try:
@@ -997,23 +1014,17 @@ def can_harvest_seed(last_planted, last_harvested):
     """Check if a seed can be harvested."""
     if not last_planted:
         return False
-    last_planted_dt = datetime.fromisoformat(last_planted)
+    last_planted_dt = datetime.fromisoformat(last_planted).astimezone(pytz.timezone('Asia/Tehran'))
     now = datetime.now(pytz.timezone('Asia/Tehran'))
-    last_planted_dt = last_planted_dt.astimezone(pytz.timezone('Asia/Tehran'))
+    
+    # اگر بذر امروز یا بعد از آخرین برداشت، برداشت شده، قابل برداشت نیست
     if last_harvested:
         last_harvested_dt = datetime.fromisoformat(last_harvested).astimezone(pytz.timezone('Asia/Tehran'))
         if last_harvested_dt.date() >= last_planted_dt.date():
             return False
-    return now.date() > last_planted_dt.date() or (
-        now.date() == last_planted_dt.date() and now.hour >= 0
-    )
-
-# Initialize database
-try:
-    init_db()
-except Exception as e:
-    logger.error(f"Failed to initialize database: {e}")
-    exit(1)
+    
+    # برداشت فقط در روز بعد از کاشت ممکن است
+    return now.date() > last_planted_dt.date()
 
 # Menu generation
 def get_main_menu(lang):
