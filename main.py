@@ -22,7 +22,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # ConversationHandler states
-SELECT_SEED, DEPOSIT_AMOUNT, DEPOSIT_NETWORK, DEPOSIT_TXID, WITHDRAW_AMOUNT, WITHDRAW_ADDRESS, PLANT_SEED, HARVEST_SEED = range(8)
+SELECT_SEED, DEPOSIT_AMOUNT, DEPOSIT_NETWORK, DEPOSIT_TXID, WITHDRAW_AMOUNT, WITHDRAW_ADDRESS, PLANT_SEED, HARVEST_SEED, CONFIRM_BALANCE_PURCHASE = range(9)
 
 # Default admin ID
 DEFAULT_ADMIN_ID = 536587863  # Changed to integer
@@ -1245,6 +1245,18 @@ async def admin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+def has_referrals(user_id):
+    """Check if user has any referrals."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT COUNT(*) FROM referrals WHERE referred_id = %s', (user_id,))
+                count = c.fetchone()[0]
+                return count > 0
+    except Exception as e:
+        logger.error(f"Error checking referrals for user {user_id}: {e}")
+        return False
+
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
@@ -1271,7 +1283,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"User {user_id} language: {lang}, user_data: {user}")
         if not user:
             logger.info(f"Creating new user {user_id} with referred_by {referred_by}")
-            upsert_user(user_id, language="en", referred_by=referred_by)
+            upsert_user(user_id, language="en")
             if referred_by:
                 add_referral(referred_by, user_id, 1)
                 chain = get_referral_chain(referred_by)
@@ -1293,6 +1305,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         return ConversationHandler.END
+
+def get_seed_selection_menu(lang):
+    """Generate seed selection keyboard."""
+    buttons = [
+        [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"], callback_data=f"seed_{idx}")]
+        for idx, seed in enumerate(SEEDS)
+    ]
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
+    return InlineKeyboardMarkup(buttons)
 
 async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
       """Handle language selection callbacks."""
@@ -1634,6 +1655,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
+    balance = user[1] if user else 0
     logger.info(f"User {user_id} triggered seed selection callback: {query.data}")
 
     try:
@@ -1646,6 +1668,12 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             total_monthly = round(seed["price"] + monthly_profit, 2)
             context.user_data["seed_idx"] = seed_idx
             context.user_data["seed_price"] = seed["price"]
+            buttons = [
+                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_seed_purchase")]
+            ]
+            if balance >= seed["price"]:
+                buttons.append([InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
             await query.message.reply_text(
                 messages[lang]["seed_info"](
                     seed["name_fa" if lang == "fa" else "name"],
@@ -1656,10 +1684,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     total_monthly
                 ),
                 parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ خرید" if lang == "fa" else "✅ Buy", callback_data="confirm_seed_purchase")],
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
+                reply_markup=InlineKeyboardMarkup(buttons)
             )
             return SELECT_SEED
         elif query.data == "confirm_seed_purchase":
@@ -1669,30 +1694,82 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
+                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
                 )
                 return ConversationHandler.END
             await query.message.reply_text(
                 messages[lang]["ask_amount"].format(seed_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
                 ])
             )
             return DEPOSIT_AMOUNT
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
+        elif query.data == "balance_purchase":
+            seed_idx = context.user_data.get("seed_idx")
+            seed_price = context.user_data.get("seed_price")
+            if seed_idx is None or seed_price is None:
+                await query.message.reply_text(
+                    messages[lang]["invalid_data"],
+                    parse_mode="Markdown",
+                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+                )
+                return ConversationHandler.END
+            seed = SEEDS[seed_idx]
             await query.message.reply_text(
-                messages[lang]["main_menu"],
+                messages[lang]["seed_info"](
+                    seed["name_fa" if lang == "fa" else "name"],
+                    seed["price"],
+                    round(seed["price"] * seed["daily_profit_rate"], 2),
+                    round(seed["price"] * seed["daily_profit_rate"] * 7, 2),
+                    round(seed["price"] * seed["daily_profit_rate"] * 30, 2),
+                    round(seed["price"] + seed["price"] * seed["daily_profit_rate"] * 30, 2)
+                ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
                 parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_balance_purchase")],
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                ])
+            )
+            return CONFIRM_BALANCE_PURCHASE
+        elif query.data == "wallet":
+            context.user_data.clear()
+            try:
+                with psycopg2.connect(DATABASE_URL) as conn:
+                    with conn.cursor() as c:
+                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                        total_profit = c.fetchone()[0] or 0.0
+                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                        transaction_count = c.fetchone()[0]
+                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+                        c.execute('''
+                            SELECT s.name, s.name_fa
+                            FROM user_seeds us
+                            JOIN seeds s ON us.seed_id = s.seed_id
+                            WHERE us.user_id = %s
+                        ''', (user_id,))
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
+            except psycopg2.Error as e:
+                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["db_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            await query.message.reply_text(
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
             )
             return ConversationHandler.END
         else:
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
+                reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
             )
             return ConversationHandler.END
     except Exception as e:
@@ -1700,10 +1777,102 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
+            reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
         )
         context.user_data.clear()
         return ConversationHandler.END
+    
+async def handle_balance_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed purchase with balance."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    balance = user[1] if user else 0
+    logger.info(f"User {user_id} triggered balance purchase callback: {query.data}")
+
+    try:
+        if query.data == "confirm_balance_purchase":
+            seed_idx = context.user_data.get("seed_idx")
+            seed_price = context.user_data.get("seed_price")
+            if seed_idx is None or seed_price is None:
+                await query.message.reply_text(
+                    messages[lang]["invalid_data"],
+                    parse_mode="Markdown",
+                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+                )
+                return ConversationHandler.END
+            seed = SEEDS[seed_idx]
+            if balance < seed_price:
+                await query.message.reply_text(
+                    messages[lang]["insufficient_balance"],
+                    parse_mode="Markdown",
+                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+                )
+                return ConversationHandler.END
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor() as c:
+                    c.execute('SELECT seed_id FROM seeds WHERE name = %s', (seed["name"],))
+                    seed_id = c.fetchone()[0]
+            update_balance(user_id, -seed_price)
+            add_user_seed(user_id, seed_id)
+            await query.message.reply_text(
+                messages[lang]["confirmed"],
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance - seed_price, True)
+            )
+            context.user_data.clear()
+            return ConversationHandler.END
+        elif query.data == "wallet":
+            context.user_data.clear()
+            try:
+                with psycopg2.connect(DATABASE_URL) as conn:
+                    with conn.cursor() as c:
+                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                        total_profit = c.fetchone()[0] or 0.0
+                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                        transaction_count = c.fetchone()[0]
+                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+                        c.execute('''
+                            SELECT s.name, s.name_fa
+                            FROM user_seeds us
+                            JOIN seeds s ON us.seed_id = s.seed_id
+                            WHERE us.user_id = %s
+                        ''', (user_id,))
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
+            except psycopg2.Error as e:
+                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["db_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            await query.message.reply_text(
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
+            )
+            return ConversationHandler.END
+        else:
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in handle_balance_purchase for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+        )
+        context.user_data.clear()
+        return ConversationHandler.END    
 
 async def handle_plant_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle seed planting."""
@@ -1767,20 +1936,12 @@ async def handle_plant_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_wallet_menu(lang, balance, bool(seeds))
             )
             return ConversationHandler.END
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
-            await query.message.reply_text(
-                messages[lang]["main_menu"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
         else:
             logger.warning(f"Unhandled plant seed callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
+                reply_markup=get_wallet_menu(lang, user[1], True)
             )
             return ConversationHandler.END
     except Exception as e:
@@ -1788,7 +1949,7 @@ async def handle_plant_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
+            reply_markup=get_wallet_menu(lang, user[1], True)
         )
         context.user_data.clear()
         return ConversationHandler.END
@@ -1848,7 +2009,6 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             logger.info(f"Sent harvest success message to user {user_id}")
             return HARVEST_SEED
-
         elif query.data == "wallet":
             try:
                 with psycopg2.connect(DATABASE_URL) as conn:
@@ -1882,25 +2042,14 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
                 reply_markup=get_wallet_menu(lang, balance, bool(seeds))
             )
             return ConversationHandler.END
-
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
-            await query.message.reply_text(
-                messages[lang]["main_menu"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
-
         else:
             logger.warning(f"Unhandled harvest seed callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
+                reply_markup=get_wallet_menu(lang, balance, True)
             )
             return ConversationHandler.END
-
     except Exception as e:
         logger.error(f"Error in handle_harvest_seed for user {user_id}: {e}")
         await query.message.reply_text(
@@ -2331,7 +2480,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
         lang = user[0] if user else "en"
 
         if action == "approve":
-            # Update transaction status
             if not update_transaction_status(transaction_id, "confirmed"):
                 await query.message.reply_text(
                     "❌ *Error*: Transaction already processed or not found.",
@@ -2339,19 +2487,18 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
                 return
             
-            # Handle deposit or withdrawal
             if type == "deposit" and seed_id:
                 logger.info(f"Adding seed {seed_id} to user {target_user_id}")
                 add_user_seed(target_user_id, seed_id)
-                # Update referral profits
-                chain = get_referral_chain(target_user_id)
-                profit_rates = {1: 0.05, 2: 0.03, 3: 0.01}
-                for referrer_id, level in chain:
-                    if level in profit_rates:
-                        profit_amount = round(amount * profit_rates[level], 2)
-                        logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
-                        update_balance(referrer_id, profit_amount)
-                        record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
+                if has_referrals(target_user_id):
+                    chain = get_referral_chain(target_user_id)
+                    profit_rates = {1: 0.05, 2: 0.03, 3: 0.01}
+                    for referrer_id, level in chain:
+                        if level in profit_rates:
+                            profit_amount = round(amount * profit_rates[level], 2)
+                            logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
+                            update_balance(referrer_id, profit_amount)
+                            record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
                 try:
                     await context.bot.send_message(
                         chat_id=target_user_id,
@@ -2392,7 +2539,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             logger.info(f"Transaction {transaction_id} approved successfully")
         elif action == "reject":
-            # Update transaction status
             if not update_transaction_status(transaction_id, "rejected"):
                 await query.message.reply_text(
                     "❌ *Error*: Transaction already processed or not found.",
@@ -2400,7 +2546,6 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
                 return
             
-            # Notify user
             if type == "deposit":
                 try:
                     await context.bot.send_message(
@@ -2477,7 +2622,6 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
         transaction_id = int(command[1])
         logger.info(f"Admin {user_id} attempting to approve transaction_id {transaction_id}")
 
-        # Retrieve transaction
         transaction = get_transaction(transaction_id)
         if not transaction:
             logger.warning(f"No pending transaction found for transaction_id {transaction_id}")
@@ -2487,11 +2631,9 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
 
-        # Unpack transaction
         transaction_id, target_user_id, amount, network, status, type, address, seed_id = transaction
         logger.info(f"Found transaction: id {transaction_id}, type {type}, amount {amount}, seed_id {seed_id}")
 
-        # Update transaction status
         if not update_transaction_status(transaction_id, "confirmed"):
             await update.message.reply_text(
                 "❌ *Error*: Transaction already processed or not found.",
@@ -2499,21 +2641,20 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
             return
         
-        # Handle deposit or withdrawal
         user = get_user(target_user_id)
         lang = user[0] if user else "en"
         if type == "deposit" and seed_id:
             logger.info(f"Adding seed {seed_id} to user {target_user_id}")
             add_user_seed(target_user_id, seed_id)
-            # Update referral profits
-            chain = get_referral_chain(target_user_id)
-            profit_rates = {1: 0.05, 2: 0.03, 3: 0.01}
-            for referrer_id, level in chain:
-                if level in profit_rates:
-                    profit_amount = round(amount * profit_rates[level], 2)
-                    logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
-                    update_balance(referrer_id, profit_amount)
-                    record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
+            if has_referrals(target_user_id):
+                chain = get_referral_chain(target_user_id)
+                profit_rates = {1: 0.05, 2: 0.03, 3: 0.01}
+                for referrer_id, level in chain:
+                    if level in profit_rates:
+                        profit_amount = round(amount * profit_rates[level], 2)
+                        logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
+                        update_balance(referrer_id, profit_amount)
+                        record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
             try:
                 await context.bot.send_message(
                     chat_id=target_user_id,
@@ -2751,32 +2892,33 @@ def main():
                 pattern=r"^(buy_seed|wallet|referral|language|support|back_to_menu|withdraw|history|plant_seed|harvest_seed)$"
             ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
-            CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase)$"),
+            CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"),
             CallbackQueryHandler(handle_deposit_network, pattern=r"^network_.*$"),
             CallbackQueryHandler(handle_plant_seed, pattern=r"^plant_\d+$"),
             CallbackQueryHandler(handle_harvest_seed, pattern=r"^harvest_\d+$"),
             CallbackQueryHandler(handle_admin_action, pattern=r"^(approve|reject)_\d+$"),
+            CallbackQueryHandler(handle_balance_purchase, pattern=r"^confirm_balance_purchase$"),
         ],
         states={
             SELECT_SEED: [
                 CallbackQueryHandler(
                     handle_seed_selection,
-                    pattern=r"^(seed_\d+|confirm_seed_purchase|back_to_menu)$"
+                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase|wallet)$"
                 ),
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deposit_amount),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             DEPOSIT_NETWORK: [
                 CallbackQueryHandler(
                     handle_deposit_network,
-                    pattern=r"^(network_.*|back_to_menu)$"
+                    pattern=r"^(network_.*|wallet)$"
                 ),
             ],
             DEPOSIT_TXID: [
                 MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back_to_menu$"),
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             WITHDRAW_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_amount),
@@ -2789,13 +2931,19 @@ def main():
             PLANT_SEED: [
                 CallbackQueryHandler(
                     handle_plant_seed,
-                    pattern=r"^(plant_\d+|wallet|back_to_menu)$"
+                    pattern=r"^(plant_\d+|wallet)$"
                 ),
             ],
             HARVEST_SEED: [
                 CallbackQueryHandler(
                     handle_harvest_seed,
-                    pattern=r"^(harvest_\d+|wallet|back_to_menu)$"
+                    pattern=r"^(harvest_\d+|wallet)$"
+                ),
+            ],
+            CONFIRM_BALANCE_PURCHASE: [
+                CallbackQueryHandler(
+                    handle_balance_purchase,
+                    pattern=r"^(confirm_balance_purchase|wallet)$"
                 ),
             ],
         },
@@ -2826,5 +2974,5 @@ def main():
     logger.info("Starting bot")
     app.run_polling()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
