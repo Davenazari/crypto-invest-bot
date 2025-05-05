@@ -770,6 +770,16 @@ def insert_profit(user_id, seed_id, amount, period):
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
+                # Check if profit already recorded for this seed today
+                today = datetime.now(pytz.timezone('Asia/Tehran')).date().isoformat()
+                c.execute('''
+                    SELECT COUNT(*) FROM profits
+                    WHERE user_id = %s AND seed_id = %s AND period = %s
+                    AND DATE(created_at) = %s
+                ''', (user_id, seed_id, period, today))
+                if c.fetchone()[0] > 0:
+                    logger.warning(f"Profit already recorded for user {user_id}, seed_id {seed_id} today")
+                    return
                 created_at = dt.datetime.now(dt.UTC).isoformat()
                 c.execute('''
                     INSERT INTO profits (user_id, seed_id, amount, period, created_at)
@@ -1010,11 +1020,12 @@ def can_plant_seed(last_planted):
     last_planted_date = last_planted_dt.astimezone(pytz.timezone('Asia/Tehran')).date()
     return last_planted_date < today
 
-def can_harvest_seed(last_planted, last_harvested):
-    """Check if a seed can be harvested (temporary test mode)."""
+def can_harvest_seed(last_planted, last_harvested, seed_id=None):
+    """Check if a seed can be harvested."""
     # برای تست، بذر گوجه (ID: 2) همیشه قابل برداشت است
-    return True  # این خط برای تست موقت اضافه شده
-    # کد اصلی (برای بعد از تست برگردون به این)
+    if seed_id == 2:
+        return True  # فقط برای تست موقت گوجه
+    # منطق اصلی برای بقیه بذرها
     if not last_planted:
         return False
     last_planted_dt = datetime.fromisoformat(last_planted).astimezone(pytz.timezone('Asia/Tehran'))
@@ -1343,7 +1354,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 return ConversationHandler.END
             buttons = [
                 [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"harvest_{seed[6]}")]
-                for seed in user_seeds if can_harvest_seed(seed[4], seed[5])
+                for seed in user_seeds if can_harvest_seed(seed[4], seed[5], seed_id=seed[6])
             ]
             if not buttons:
                 await query.message.reply_text(
@@ -1727,7 +1738,7 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
         seed_id, last_planted, last_harvested, price, daily_profit_rate = user_seed
 
         # Check if seed can be harvested
-        if not can_harvest_seed(last_planted, last_harvested):
+        if not can_harvest_seed(last_planted, last_harvested, seed_id=seed_id):
             logger.info(f"Seed {seed_id} not ready for harvest by user {user_id}")
             user = get_user(user_id)
             lang = user[0] if user else "en"
@@ -1740,30 +1751,35 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # Calculate daily profit
         profit_amount = round(price * daily_profit_rate, 3)  # Daily profit
-        current_time = dt.datetime.now(dt.UTC).isoformat()
 
         # Update last harvested time
         update_seed_harvest(user_id, user_seed_id)
-        logger.info(f"Updated last harvested for user {user_id}, seed {seed_id}")
 
         # Update user balance
         update_balance(user_id, profit_amount)
-        logger.info(f"Updated balance for user {user_id}: added {profit_amount}")
 
         # Record profit in profits table
         insert_profit(user_id, seed_id, profit_amount, "daily")
-        logger.info(f"Inserted profit for user {user_id}: seed_id {seed_id}, amount {profit_amount}")
 
         # Notify user
         user = get_user(user_id)
         lang = user[0] if user else "en"
+        balance = user[1] if user else 0
+
+        # Generate updated harvest menu
+        user_seeds = get_user_seeds(user_id)
+        buttons = [
+            [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"harvest_{seed[6]}")]
+            for seed in user_seeds if can_harvest_seed(seed[4], seed[5], seed_id=seed[6])
+        ]
+        buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
         await query.message.reply_text(
             messages[lang]["harvest_success"](profit_amount),
             parse_mode="Markdown",
-            reply_markup=get_wallet_menu(lang, user[1] if user else 0, True)
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
         logger.info(f"Sent harvest success message to user {user_id}")
-        return ConversationHandler.END
+        return HARVEST_SEED  # Stay in HARVEST_SEED state to allow further harvesting
 
     except Exception as e:
         logger.error(f"Error in handle_harvest_seed for user {user_id}: {e}")
