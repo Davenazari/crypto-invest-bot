@@ -956,7 +956,9 @@ def get_user_seed(user_id, user_seed_id):
                     JOIN seeds s ON us.seed_id = s.seed_id
                     WHERE us.id = %s AND us.user_id = %s
                 ''', (user_seed_id, user_id))
-                return c.fetchone()
+                result = c.fetchone()
+                logger.info(f"Retrieved seed for user {user_id}, user_seed_id {user_seed_id}: {result}")
+                return result
     except Exception as e:
         logger.error(f"Error getting user seed {user_seed_id} for user {user_id}: {e}")
         return None
@@ -1736,6 +1738,7 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # Unpack seed data
         seed_id, last_planted, last_harvested, price, daily_profit_rate = user_seed
+        logger.info(f"Checking harvest for user {user_id}, seed_id {seed_id}, user_seed_id {user_seed_id}")
 
         # Check if seed can be harvested
         if not can_harvest_seed(last_planted, last_harvested, seed_id=seed_id):
@@ -1751,15 +1754,19 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         # Calculate daily profit
         profit_amount = round(price * daily_profit_rate, 3)  # Daily profit
+        logger.info(f"Calculated profit for user {user_id}, seed_id {seed_id}: {profit_amount}")
 
         # Update last harvested time
         update_seed_harvest(user_id, user_seed_id)
+        logger.info(f"Updated last harvested for user {user_id}, user_seed_id {user_seed_id}")
 
         # Update user balance
         update_balance(user_id, profit_amount)
+        logger.info(f"Updated balance for user {user_id}: added {profit_amount}")
 
         # Record profit in profits table
         insert_profit(user_id, seed_id, profit_amount, "daily")
+        logger.info(f"Inserted profit for user {user_id}: seed_id {seed_id}, amount {profit_amount}")
 
         # Notify user
         user = get_user(user_id)
