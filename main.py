@@ -3160,6 +3160,24 @@ async def handle_unexpected_message(update: Update, context: ContextTypes.DEFAUL
     )
     return ConversationHandler.END
 
+async def debug_referrals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text("🚫 Unauthorized")
+        return
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT referrer_id, referred_id, level FROM referrals WHERE referrer_id = %s', (user_id,))
+                referrals = c.fetchall()
+                if referrals:
+                    response = "\n".join([f"Referrer: {r[0]}, Referred: {r[1]}, Level: {r[2]}" for r in referrals])
+                else:
+                    response = "No referrals found."
+                await update.message.reply_text(f"Referrals:\n{response}")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)}")
+
 def main():
     """Run the bot."""
     token = os.getenv("BOT_TOKEN")
@@ -3272,6 +3290,7 @@ def main():
     app.add_handler(CommandHandler("test_referral_profit", test_referral_profit))
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_error_handler(error_handler)
+    app.add_handler(CommandHandler("debug_referrals", debug_referrals))
 
     logger.info("Starting bot")
     app.run_polling()
