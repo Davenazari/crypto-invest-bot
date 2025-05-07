@@ -995,6 +995,43 @@ def add_referral(referrer_id, referred_id, level):
         logger.error(f"Error adding referral for referrer {referrer_id}: {e}")
         raise
 
+def handle_referral(referrer_id, referred_id):
+    """Handle referral processing and insert into referrals table."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                # چک کردن اینکه کاربر جدید قبلاً رفرال شده یا نه
+                c.execute('SELECT id FROM referrals WHERE referred_id = %s', (referred_id,))
+                if c.fetchone():
+                    logger.info(f"User {referred_id} is already referred, skipping referral processing")
+                    return
+                
+                # ثبت رفرال سطح 1
+                logger.info(f"Adding level 1 referral: referrer {referrer_id}, referred {referred_id}")
+                add_referral(referrer_id, referred_id, 1)
+
+                # گرفتن زنجیره رفرال برای ثبت سطح‌های 2 و 3
+                c.execute('SELECT referrer_id FROM referrals WHERE referred_id = %s', (referrer_id,))
+                level_2_referrer = c.fetchone()
+                if level_2_referrer:
+                    level_2_referrer_id = level_2_referrer[0]
+                    logger.info(f"Adding level 2 referral: referrer {level_2_referrer_id}, referred {referred_id}")
+                    add_referral(level_2_referrer_id, referred_id, 2)
+
+                    # چک کردن سطح 3
+                    c.execute('SELECT referrer_id FROM referrals WHERE referred_id = %s', (level_2_referrer_id,))
+                    level_3_referrer = c.fetchone()
+                    if level_3_referrer:
+                        level_3_referrer_id = level_3_referrer[0]
+                        logger.info(f"Adding level 3 referral: referrer {level_3_referrer_id}, referred {referred_id}")
+                        add_referral(level_3_referrer_id, referred_id, 3)
+
+                conn.commit()
+                logger.info(f"Referral processing completed for referred_id {referred_id}")
+    except Exception as e:
+        logger.error(f"Error handling referral for referrer {referrer_id}, referred {referred_id}: {e}")
+        raise    
+
 def record_referral_profit(referrer_id, referred_id, transaction_id, level, profit_amount):
     """Record referral profit."""
     try:
@@ -1325,6 +1362,7 @@ def get_language_menu(lang):
         [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
     ])
 
+
 # Error handler
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors."""
@@ -1428,23 +1466,50 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 referred_by = int(args[0].split("_")[1])
                 if referred_by == user_id:
+                    logger.warning(f"User {user_id} tried to refer themselves")
                     referred_by = None
-                logger.info(f"Referral detected for user {user_id}: referred_by {referred_by}")
+                else:
+                    logger.info(f"Referral detected for user {user_id}: referred_by {referred_by}")
             except (IndexError, ValueError):
                 logger.warning(f"Invalid referral code for user {user_id}: {args[0]}")
         
+        # ثبت یا به‌روزرسانی کاربر
         user = get_user(user_id)
         lang = user[0] if user else "en"
-        if not user:
-            logger.info(f"Creating new user {user_id} with referred_by {referred_by}")
-            upsert_user(user_id, language="en", username=username)
-            if referred_by:
-                add_referral(referred_by, user_id, 1)
-                chain = get_referral_chain(referred_by)
-                for referrer_id, level in chain:
-                    if level < 3:
-                        add_referral(referrer_id, user_id, level + 1)
-        
+        upsert_user(user_id, language=lang, username=username)
+        logger.info(f"User {user_id} upserted with language {lang}, username {username}")
+
+        # پردازش رفرال
+        if referred_by:
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor() as c:
+                    # چک کردن اینکه کاربر قبلاً رفرال شده یا نه
+                    c.execute('SELECT id FROM referrals WHERE referred_id = %s', (user_id,))
+                    if c.fetchone():
+                        logger.info(f"User {user_id} is already referred, skipping referral processing")
+                    else:
+                        # ثبت رفرال سطح 1
+                        logger.info(f"Adding level 1 referral: referrer {referred_by}, referred {user_id}")
+                        add_referral(referred_by, user_id, 1)
+
+                        # ثبت رفرال‌های سطح 2 و 3
+                        c.execute('SELECT referrer_id FROM referrals WHERE referred_id = %s', (referred_by,))
+                        level_2_referrer = c.fetchone()
+                        if level_2_referrer:
+                            level_2_referrer_id = level_2_referrer[0]
+                            logger.info(f"Adding level 2 referral: referrer {level_2_referrer_id}, referred {user_id}")
+                            add_referral(level_2_referrer_id, user_id, 2)
+
+                            c.execute('SELECT referrer_id FROM referrals WHERE referred_id = %s', (level_2_referrer_id,))
+                            level_3_referrer = c.fetchone()
+                            if level_3_referrer:
+                                level_3_referrer_id = level_3_referrer[0]
+                                logger.info(f"Adding level 3 referral: referrer {level_3_referrer_id}, referred {user_id}")
+                                add_referral(level_3_referrer_id, user_id, 3)
+                        conn.commit()
+                        logger.info(f"Referral processing completed for user {user_id}")
+
+        # ارسال پیام خوش‌آمدگویی
         await update.message.reply_text(
             messages[lang]["welcome"],
             parse_mode="Markdown",
