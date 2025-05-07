@@ -1,6 +1,7 @@
 import logging
 import os
 import psycopg2
+import asyncio
 from datetime import datetime, timedelta
 import datetime as dt
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -1069,20 +1070,26 @@ def record_referral_profit(referrer_id, referred_id, transaction_id, level, prof
         
         # ارسال اعلان به رفرر
         try:
-            from telegram import Bot
             bot = Bot(token=os.getenv("BOT_TOKEN"))
             user = get_user(referrer_id)
             lang = user[0] if user else "en"
-            bot.send_message(
-                chat_id=referrer_id,
-                text=messages[lang]["referral_profit_notification"](
-                    round(profit_amount, 2), level, referred_id
-                ),
-                parse_mode="Markdown"
-            )
+            # تابع کمکی برای ارسال پیام به صورت async
+            async def send_notification():
+                await bot.send_message(
+                    chat_id=referrer_id,
+                    text=messages[lang]["referral_profit_notification"](
+                        round(profit_amount, 2), referred_id, level
+                    ),
+                    parse_mode="Markdown"
+                )
+            # اجرای تابع async در یک event loop
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(send_notification())
             logger.info(f"Sent referral profit notification to referrer {referrer_id}")
         except telegram.error.TelegramError as e:
             logger.error(f"Failed to send referral profit notification to referrer {referrer_id}: {e}")
+        except Exception as e:
+            logger.error(f"Error sending notification to referrer {referrer_id}: {e}")
     except Exception as e:
         logger.error(f"Error recording referral profit for referrer {referrer_id}: {e}")
         raise
@@ -2847,7 +2854,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                                 referrer_lang = get_user(referrer_id)[0] or "en"
                                 await context.bot.send_message(
                                     chat_id=referrer_id,
-                                    text=messages[referrer_lang]["referral_profit_notification"](profit_amount, target_user_id),
+                                    text=messages[referrer_lang]["referral_profit_notification"](profit_amount, target_user_id, level),
                                     parse_mode="Markdown"
                                 )
                                 logger.info(f"Sent referral profit notification to referrer {referrer_id}")
@@ -3094,7 +3101,7 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
                             referrer_lang = get_user(referrer_id)[0] or "en"
                             await context.bot.send_message(
                                 chat_id=referrer_id,
-                                text=messages[referrer_lang]["referral_profit_notification"](profit_amount, target_user_id),
+                                text=messages[referrer_lang]["referral_profit_notification"](profit_amount, target_user_id, level),
                                 parse_mode="Markdown"
                             )
                             logger.info(f"Sent referral profit notification to referrer {referrer_id}")
