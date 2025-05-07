@@ -239,9 +239,12 @@ messages = {
             f"🔗 *لینک دعوت شما*: `YOUR_LINK_WILL_BE_HERE`\n"
             f"📌 لینک رو به اشتراک بگذارید تا سود کسب کنید!"
         ),
-        "referral_profit_notification": lambda profit, level, referred_id: (
-            f"🎉 *سود جدید رفرال!*\n"
-            f"شما {profit} تتر سود از کاربر {referred_id} (سطح {level}) دریافت کردید!"
+        "referral_profit_notification": lambda amount, user_id, level: (
+            f"🎉 *سود رفرال دریافت شد!*\n"
+            f"مقدار: `{amount}` تتر\n"
+            f"سطح: `{level}`\n"
+            f"از کاربر: `{user_id}`\n"
+            f"📌 برای جزئیات بیشتر، به منوی کارگرهای مزرعه برید."
         ),
         "plant_seed": (
             "🌱 **کاشت بذر** 🌿\n"
@@ -505,9 +508,12 @@ messages = {
             f"🔗 *Your Referral Link*: `YOUR_LINK_WILL_BE_HERE`\n"
             f"📌 Share your link to start earning!"
         ),
-        "referral_profit_notification": lambda profit, level, referred_id: (
-            f"🎉 *New Referral Profit!*\n"
-            f"You earned {profit} USDT from user {referred_id} (Level {level})!"
+        "referral_profit_notification": lambda amount, user_id, level: (
+            f"🎉 *Referral Profit Received!*\n"
+            f"Amount: `{amount}` USDT\n"
+            f"Level: `{level}`\n"
+            f"From User: `{user_id}`\n"
+            f"📌 Check the farm workers menu for more details."
         ),
         "plant_seed": (
             "🌱 **Plant Seed** 🌿\n"
@@ -2836,6 +2842,22 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                             logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
                             update_balance(referrer_id, profit_amount)
                             record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
+                            # Send notification to referrer
+                            try:
+                                referrer_lang = get_user(referrer_id)[0] or "en"
+                                await context.bot.send_message(
+                                    chat_id=referrer_id,
+                                    text=messages[referrer_lang]["referral_profit_notification"](profit_amount, target_user_id),
+                                    parse_mode="Markdown"
+                                )
+                                logger.info(f"Sent referral profit notification to referrer {referrer_id}")
+                            except telegram.error.TelegramError as e:
+                                logger.error(f"Failed to send referral profit notification to referrer {referrer_id}: {e}")
+                                await context.bot.send_message(
+                                    chat_id=DEFAULT_ADMIN_ID,
+                                    text=f"⚠️ *Warning*: Failed to notify referrer {referrer_id} about profit {profit_amount}: {e}",
+                                    parse_mode="Markdown"
+                                )
                 try:
                     await context.bot.send_message(
                         chat_id=target_user_id,
@@ -3067,6 +3089,22 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
                         logger.info(f"Recording referral profit for referrer {referrer_id}, level {level}, amount {profit_amount}")
                         update_balance(referrer_id, profit_amount)
                         record_referral_profit(referrer_id, target_user_id, transaction_id, level, profit_amount)
+                        # Send notification to referrer
+                        try:
+                            referrer_lang = get_user(referrer_id)[0] or "en"
+                            await context.bot.send_message(
+                                chat_id=referrer_id,
+                                text=messages[referrer_lang]["referral_profit_notification"](profit_amount, target_user_id),
+                                parse_mode="Markdown"
+                            )
+                            logger.info(f"Sent referral profit notification to referrer {referrer_id}")
+                        except telegram.error.TelegramError as e:
+                            logger.error(f"Failed to send referral profit notification to referrer {referrer_id}: {e}")
+                            await context.bot.send_message(
+                                chat_id=DEFAULT_ADMIN_ID,
+                                text=f"⚠️ *Warning*: Failed to notify referrer {referrer_id} about profit {profit_amount}: {e}",
+                                parse_mode="Markdown"
+                            )
             try:
                 await context.bot.send_message(
                     chat_id=target_user_id,
