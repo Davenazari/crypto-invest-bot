@@ -1639,77 +1639,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.clear()
         return ConversationHandler.END
     
-async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle back button callbacks."""
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    balance = user[1] if user else 0
-    logger.info(f"User {user_id} triggered back callback: {query.data}")
-
-    try:
-        if query.data == "back_to_menu":
-            # Clear user data and return to main menu
-            context.user_data.clear()
-            await query.message.reply_text(
-                messages[lang]["main_menu"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
-        elif query.data == "wallet":
-            # Return to wallet menu
-            try:
-                with psycopg2.connect(DATABASE_URL) as conn:
-                    with conn.cursor() as c:
-                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
-                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
-                        transaction_count = c.fetchone()[0]
-                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
-                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
-                        c.execute('''
-                            SELECT s.name, s.name_fa
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            WHERE us.user_id = %s
-                        ''', (user_id,))
-                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        seeds_text = ", ".join(seeds) if seeds else None
-            except psycopg2.Error as e:
-                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(
-                    messages[lang]["db_error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                return ConversationHandler.END
-            await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
-                parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
-            )
-            return ConversationHandler.END
-        else:
-            # Handle unrecognized back callback
-            logger.warning(f"Unhandled back callback for user {user_id}: {query.data}")
-            await query.message.reply_text(
-                messages[lang]["error"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
-    except Exception as e:
-        logger.error(f"Error in handle_back for user {user_id}: {e}")
-        await query.message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
-        )
-        context.user_data.clear()
-        return ConversationHandler.END
 
 async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle seed selection for purchase."""
@@ -1744,7 +1673,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             ]
             if balance >= seed["price"]:
                 buttons.insert(0, [InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
-            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
             await query.message.reply_text(
                 messages[lang]["seed_info"](
                     seed["name_fa" if lang == "fa" else "name"],
@@ -1753,7 +1682,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     weekly_profit,
                     monthly_profit,
                     total_monthly,
-                    seed["emoji"]  # اضافه کردن ایموجی
+                    seed["emoji"]
                 ),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(buttons)
@@ -1774,7 +1703,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 messages[lang]["ask_amount"].format(seed_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")]
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
                 ])
             )
             return DEPOSIT_AMOUNT
@@ -1802,60 +1731,15 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     weekly_profit,
                     monthly_profit,
                     total_monthly,
-                    seed["emoji"]  # اضافه کردن ایموجی
+                    seed["emoji"]
                 ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_balance_purchase")],
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")]
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
                 ])
             )
             return CONFIRM_BALANCE_PURCHASE
-        elif query.data == "back":
-            await query.message.reply_text(
-                messages[lang]["select_seed"],
-                parse_mode="Markdown",
-                reply_markup=get_seed_selection_menu(lang)
-            )
-            return SELECT_SEED
-        elif query.data == "wallet":
-            context.user_data.clear()
-            try:
-                with psycopg2.connect(DATABASE_URL) as conn:
-                    with conn.cursor() as c:
-                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
-                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
-                        transaction_count = c.fetchone()[0]
-                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
-                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
-                        c.execute('''
-                            SELECT s.name, s.name_fa
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            WHERE us.user_id = %s
-                        ''', (user_id,))
-                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        seeds_text = ", ".join(seeds) if seeds else None
-            except psycopg2.Error as e:
-                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(
-                    messages[lang]["db_error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                await context.bot.send_message(
-                    chat_id=DEFAULT_ADMIN_ID,
-                    text=f"⚠️ *Database Error in handle_seed_selection for user {user_id}*: {str(e)}",
-                    parse_mode="Markdown"
-                )
-                return ConversationHandler.END
-            await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
-                parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
-            )
-            return ConversationHandler.END
         else:
             logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
@@ -2693,6 +2577,75 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"❌ *Error*: {str(e)}",
             parse_mode="Markdown"
         )
+
+async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle back button callbacks."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"User {user_id} triggered back callback: {query.data}")
+
+    try:
+        if query.data == "back_to_menu":
+            context.user_data.clear()
+            await query.message.reply_text(
+                messages[lang]["main_menu"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+        elif query.data == "wallet":
+            balance = user[1] if user else 0
+            try:
+                with psycopg2.connect(DATABASE_URL) as conn:
+                    with conn.cursor() as c:
+                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                        total_profit = c.fetchone()[0] or 0.0
+                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                        transaction_count = c.fetchone()[0]
+                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+                        c.execute('''
+                            SELECT s.name, s.name_fa
+                            FROM user_seeds us
+                            JOIN seeds s ON us.seed_id = s.seed_id
+                            WHERE us.user_id = %s
+                        ''', (user_id,))
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
+            except psycopg2.Error as e:
+                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["db_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            await query.message.reply_text(
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
+            )
+            return ConversationHandler.END
+        else:
+            logger.warning(f"Unhandled back callback data for user {user_id}: {query.data}")
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in handle_back for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END        
 
 async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle transaction approval by admin."""
