@@ -1,9 +1,11 @@
 import logging
+import re
 import os
 import psycopg2
 from datetime import datetime, timedelta
 import datetime as dt
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from psycopg2.pool import SimpleConnectionPool
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -16,6 +18,9 @@ from telegram.ext import (
 import telegram.error
 import uuid
 import pytz
+
+# Database connection pool
+db_pool = SimpleConnectionPool(1, 20, DATABASE_URL) if DATABASE_URL else None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -655,6 +660,11 @@ def init_db():
                         FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
                     )
                 ''')
+                # Add indexes
+                c.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id)')
+                c.execute('CREATE INDEX IF NOT EXISTS idx_user_seeds_user_id ON user_seeds(user_id)')
+                c.execute('CREATE INDEX IF NOT EXISTS idx_profits_user_id ON profits(user_id)')
+                c.execute('CREATE INDEX IF NOT EXISTS idx_referrals_referrer_id ON referrals(referrer_id)')
                 # Populate seeds table if empty
                 c.execute('SELECT COUNT(*) FROM seeds')
                 if c.fetchone()[0] == 0:
@@ -704,19 +714,33 @@ def init_db():
 # Database helper functions
 def get_user(user_id):
     """Retrieve user data from database or create a new user."""
+    conn = None
     try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
-                user = c.fetchone()
-                if user:
-                    return user
-                # Create new user if not found
-                upsert_user(user_id, language="en")
-                return ("en", 0.0)
+        conn = get_db_connection()
+        with conn.cursor() as c:
+            c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
+            user = c.fetchone()
+            if user:
+                return user
+            # Create new user if not found
+            upsert_user(user_id, language="en")
+            return ("en", 0.0)
     except Exception as e:
         logger.error(f"Error getting user {user_id}: {e}")
         return None
+    finally:
+        release_db_connection(conn)
+
+def get_db_connection():
+    """Get a database connection from the pool."""
+    if not db_pool:
+        raise ValueError("Database pool not initialized")
+    return db_pool.getconn()
+
+def release_db_connection(conn):
+    """Release a database connection back to the pool."""
+    if db_pool and conn:
+        db_pool.putconn(conn)        
 
 def upsert_user(user_id, language='en', referred_by=None):
     """Insert or update user in database."""
@@ -766,16 +790,17 @@ def insert_transaction(user_id, amount, network, status, type, message_id, addre
         raise
 
 def insert_profit(user_id, seed_id, amount, period):
-    """Insert a profit record into the database."""
+    """Insert a profit record into the database, preventing duplicates."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # Check if profit already recorded for this seed today
+                # Lock the relevant row to prevent race conditions
                 today = datetime.now(pytz.timezone('Asia/Tehran')).date().isoformat()
                 c.execute('''
                     SELECT COUNT(*) FROM profits
                     WHERE user_id = %s AND seed_id = %s AND period = %s
                     AND DATE(created_at) = %s
+                    FOR UPDATE
                 ''', (user_id, seed_id, period, today))
                 if c.fetchone()[0] > 0:
                     logger.warning(f"Profit already recorded for user {user_id}, seed_id {seed_id} today")
@@ -791,20 +816,24 @@ def insert_profit(user_id, seed_id, amount, period):
         logger.error(f"Error inserting profit for user {user_id}: {e}")
         raise
 
-def update_transaction_status(transaction_id, user_id, message_id, status):
-    """Update transaction status."""
+def update_transaction_status(transaction_id, status):
+    """Update transaction status using transaction ID."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('''
                     UPDATE transactions
                     SET status = %s
-                    WHERE user_id = %s AND message_id = %s AND status = 'pending'
-                ''', (status, user_id, message_id))
+                    WHERE id = %s AND status = 'pending'
+                ''', (status, transaction_id))
+                if c.rowcount == 0:
+                    logger.warning(f"No pending transaction found for transaction_id {transaction_id}")
+                    return False
                 conn.commit()
-                logger.info(f"Updated transaction status for user {user_id}, message_id {message_id} to {status}")
+                logger.info(f"Updated transaction status for transaction_id {transaction_id} to {status}")
+                return True
     except Exception as e:
-        logger.error(f"Error updating transaction status for user {user_id}: {e}")
+        logger.error(f"Error updating transaction status for transaction_id {transaction_id}: {e}")
         raise
 
 def get_transaction(transaction_id):
@@ -1043,7 +1072,28 @@ def fix_database(user_id):
 
     except Exception as e:
         logger.error(f"Error fixing database for user {user_id}: {e}")
-        raise            
+        raise
+
+def validate_wallet_address(address, network):
+    """Validate wallet address format based on network."""
+    if network == "TRC20":
+        return address.startswith("T") and len(address) == 34
+    if network == "BEP20":
+        return re.match(r"^0x[a-fA-F0-9]{40}$", address) is not None
+    return False
+
+def has_pending_transactions(user_id):
+    """Check if user has pending transactions."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'pending'))
+                count = c.fetchone()[0]
+                logger.info(f"User {user_id} has {count} pending transactions")
+                return count > 0
+    except Exception as e:
+        logger.error(f"Error checking pending transactions for user {user_id}: {e}")
+        raise                    
 
 def add_user_seed(user_id, seed_id):
     """Add a seed to a user's collection."""
@@ -1105,8 +1155,9 @@ def can_plant_seed(last_planted):
     return last_planted_date < today
 
 def can_harvest_seed(last_planted, last_harvested, seed_id=None):
-    """Check if a seed can be harvested."""
+    """Check if a seed can be harvested based on planting and harvesting times."""
     if not last_planted:
+        logger.info(f"Cannot harvest: Seed {seed_id} has not been planted.")
         return False
     last_planted_dt = datetime.fromisoformat(last_planted).astimezone(pytz.timezone('Asia/Tehran'))
     now = datetime.now(pytz.timezone('Asia/Tehran'))
@@ -1114,10 +1165,12 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
     if last_harvested:
         last_harvested_dt = datetime.fromisoformat(last_harvested).astimezone(pytz.timezone('Asia/Tehran'))
         if last_harvested_dt.date() >= last_planted_dt.date():
+            logger.info(f"Cannot harvest: Seed {seed_id} already harvested today.")
             return False
     
-    return now.date() > last_planted_dt.date()
-    return now.date() > last_planted_dt.date()
+    can_harvest = now.date() > last_planted_dt.date()
+    logger.info(f"Can harvest seed {seed_id}: {can_harvest}")
+    return can_harvest
 
 # Menu generation
 def get_main_menu(lang):
@@ -1649,7 +1702,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle seed selection for purchase."""
+    """Handle seed selection and purchase confirmation."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -1660,20 +1713,49 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
     try:
         if query.data.startswith("seed_"):
-            seed_idx = int(query.data.split("_")[1])
+            try:
+                seed_idx = int(query.data.split("_")[1])
+                if seed_idx < 0 or seed_idx >= len(SEEDS):
+                    logger.error(f"Invalid seed_idx {seed_idx} for user {user_id}")
+                    await query.message.reply_text(
+                        messages[lang]["error"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+            except ValueError:
+                logger.error(f"Invalid seed_idx format for user {user_id}: {query.data}")
+                await query.message.reply_text(
+                    messages[lang]["error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+
             seed = SEEDS[seed_idx]
-            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 2)
-            weekly_profit = round(daily_profit * 7, 2)
-            monthly_profit = round(daily_profit * 30, 2)
-            total_monthly = round(seed["price"] + monthly_profit, 2)
             context.user_data["seed_idx"] = seed_idx
             context.user_data["seed_price"] = seed["price"]
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
+            weekly_profit = round(daily_profit * 7, 3)
+            monthly_profit = round(daily_profit * 30, 3)
+            total_monthly = round(seed["price"] + monthly_profit, 3)
             buttons = [
-                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_seed_purchase")]
+                [InlineKeyboardButton(
+                    "✅ تأیید خرید" if lang == "fa" else "✅ Confirm Purchase",
+                    callback_data="confirm_seed_purchase"
+                )],
+                [InlineKeyboardButton(
+                    "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+                    callback_data="wallet"
+                )]
             ]
             if balance >= seed["price"]:
-                buttons.append([InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
-            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
+                buttons.insert(0, [
+                    InlineKeyboardButton(
+                        "💰 خرید با موجودی" if lang == "fa" else "💰 Buy with Balance",
+                        callback_data="balance_purchase"
+                    )
+                ])
             await query.message.reply_text(
                 messages[lang]["seed_info"](
                     seed["name_fa" if lang == "fa" else "name"],
@@ -2058,6 +2140,17 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=get_wallet_menu(lang, balance, True)
         )
         return ConversationHandler.END
+
+async def send_error_message(update, lang, message_key="error", reply_markup=None):
+    """Send an error message to the user."""
+    if reply_markup is None:
+        reply_markup = get_main_menu(lang)
+    await update.message.reply_text(
+        messages[lang][message_key],
+        parse_mode="Markdown",
+        reply_markup=reply_markup
+    )
+    return ConversationHandler.END        
     
 async def check_seeds(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check seeds for user 5664533861 (temporary for debugging)."""
@@ -2096,7 +2189,10 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     seed_price = context.user_data.get("seed_price")
     input_text = update.message.text.strip()
     logger.info(f"User {user_id} entered deposit amount: '{input_text}'")
-
+    
+    context.user_data.clear()  # پاکسازی در ابتدای تابع
+    context.user_data["seed_price"] = seed_price  # بازگرداندن داده‌های لازم
+    
     if not seed_price:
         logger.error(f"No seed_price in user_data for user {user_id}")
         await update.message.reply_text(
@@ -2105,6 +2201,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=get_main_menu(lang)
         )
         return ConversationHandler.END
+    # بقیه کد بدون تغییر
 
     try:
         amount = float(input_text)
@@ -2318,6 +2415,41 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.user_data.clear()
         return ConversationHandler.END
 
+async def send_wallet_info(update, context, user_id, lang, balance):
+    """Send wallet information to user."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                total_profit = c.fetchone()[0] or 0.0
+                c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                transaction_count = c.fetchone()[0]
+                c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+                c.execute('''
+                    SELECT s.name, s.name_fa
+                    FROM user_seeds us
+                    JOIN seeds s ON us.seed_id = s.seed_id
+                    WHERE us.user_id = %s
+                ''', (user_id,))
+                seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                seeds_text = ", ".join(seeds) if seeds else None
+    except psycopg2.Error as e:
+        logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["db_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
+        parse_mode="Markdown",
+        reply_markup=get_wallet_menu(lang, balance, bool(seeds))
+    )
+    return ConversationHandler.END        
+
 async def handle_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle withdrawal amount input."""
     user_id = update.effective_user.id
@@ -2365,10 +2497,17 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
     """Handle withdrawal address input."""
     user_id = update.effective_user.id
     user = get_user(user_id)
-    lang = user[0] if user else "en"
+    if not user:
+        await update.message.reply_text(
+            messages["en"]["db_error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu("en")
+        )
+        return ConversationHandler.END
+    lang = user[0]
     amount = context.user_data.get("withdraw_amount")
-    address = update.message.text
-    logger.info(f"User {user_id} submitted withdrawal address")
+    address = update.message.text.strip()
+    logger.info(f"User {user_id} submitted withdrawal address: {address}")
 
     if not amount:
         await update.message.reply_text(
@@ -2377,6 +2516,15 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
             reply_markup=get_main_menu(lang)
         )
         context.user_data.clear()
+        return ConversationHandler.END
+
+    # Validate address (assuming BEP20 for simplicity; adjust as needed)
+    if not validate_wallet_address(address, "BEP20"):
+        await update.message.reply_text(
+            messages[lang]["error"] + "\nآدرس کیف پول نامعتبر است.",
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
         return ConversationHandler.END
 
     try:
@@ -2875,11 +3023,13 @@ def main():
     """Run the bot."""
     token = os.getenv("BOT_TOKEN")
     if not token:
-        logger.error("BOT_TOKEN not found in environment variables")
-        exit(1)
-
-    app = ApplicationBuilder().token(token).build()
-
+        logger.error("BOT_TOKEN is missing. Please set the BOT_TOKEN environment variable.")
+        raise ValueError("Missing BOT_TOKEN")
+    
+    if not DATABASE_URL:
+        logger.error("DATABASE_URL is missing. Please set the DATABASE_URL environment variable.")
+        raise ValueError("Missing DATABASE_URL")
+    
     # Run fix_database for user 5664533861 at startup
     fix_database(5664533861)
     logger.info("Ran fix_database for user 5664533861")
