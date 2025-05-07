@@ -877,11 +877,19 @@ def update_balance(user_id, amount):
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
+                # گرفتن بالانس فعلی
+                c.execute('SELECT balance FROM users WHERE user_id = %s', (user_id,))
+                current_balance = c.fetchone()[0] or 0.0
+                logger.info(f"Current balance for user {user_id} before update: {current_balance}")
+                # آپدیت بالانس
                 c.execute('UPDATE users SET balance = balance + %s WHERE user_id = %s', (amount, user_id))
+                # گرفتن بالانس جدید
+                c.execute('SELECT balance FROM users WHERE user_id = %s', (user_id,))
+                new_balance = c.fetchone()[0] or 0.0
+                logger.info(f"Updated balance for user {user_id}: added {amount}, new balance: {new_balance}")
                 conn.commit()
-                logger.info(f"Updated balance for user {user_id}: added {amount}")
     except Exception as e:
-        logger.error(f"Error updating balance for user {user_id}: {e}")
+        logger.error(f"Error updating balance for user {user_id}: {e}", exc_info=True)
         raise
 
 def insert_transaction(user_id, amount, network, status, type, message_id, address=None, seed_id=None):
@@ -2114,8 +2122,13 @@ async def handle_balance_purchase(update: Update, context: ContextTypes.DEFAULT_
             try:
                 with psycopg2.connect(DATABASE_URL) as conn:
                     with conn.cursor() as c:
+                        # جمع سود از جدول profits
                         c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
+                        seed_profit = c.fetchone()[0] or 0.0
+                        # جمع سود از جدول referral_profits
+                        c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                        referral_profit = c.fetchone()[0] or 0.0
+                        total_profit = seed_profit + referral_profit
                         c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
                         transaction_count = c.fetchone()[0]
                         c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
@@ -2192,8 +2205,13 @@ async def handle_plant_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 with psycopg2.connect(DATABASE_URL) as conn:
                     with conn.cursor() as c:
+                        # جمع سود از جدول profits
                         c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
+                        seed_profit = c.fetchone()[0] or 0.0
+                        # جمع سود از جدول referral_profits
+                        c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                        referral_profit = c.fetchone()[0] or 0.0
+                        total_profit = seed_profit + referral_profit
                         c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
                         transaction_count = c.fetchone()[0]
                         c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
@@ -2298,8 +2316,13 @@ async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE
             try:
                 with psycopg2.connect(DATABASE_URL) as conn:
                     with conn.cursor() as c:
+                        # جمع سود از جدول profits
                         c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
+                        seed_profit = c.fetchone()[0] or 0.0
+                        # جمع سود از جدول referral_profits
+                        c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                        referral_profit = c.fetchone()[0] or 0.0
+                        total_profit = seed_profit + referral_profit
                         c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
                         transaction_count = c.fetchone()[0]
                         c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
@@ -2905,8 +2928,13 @@ async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 with psycopg2.connect(DATABASE_URL) as conn:
                     with conn.cursor() as c:
+                        # جمع سود از جدول profits
                         c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
+                        seed_profit = c.fetchone()[0] or 0.0
+                        # جمع سود از جدول referral_profits
+                        c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                        referral_profit = c.fetchone()[0] or 0.0
+                        total_profit = seed_profit + referral_profit
                         c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
                         transaction_count = c.fetchone()[0]
                         c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
@@ -3243,6 +3271,49 @@ async def debug_referrals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error: {str(e)}")
 
+async def debug_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug balance and referral profits for a user."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text("🚫 Unauthorized")
+        return
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                # گرفتن بالانس
+                c.execute('SELECT balance FROM users WHERE user_id = %s', (user_id,))
+                balance = c.fetchone()[0] or 0.0
+                # گرفتن سود بذرها
+                c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                seed_profit = c.fetchone()[0] or 0.0
+                # گرفتن سود رفرال‌ها
+                c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                referral_profit = c.fetchone()[0] or 0.0
+                # گرفتن جزئیات سود رفرال‌ها
+                c.execute('''
+                    SELECT referred_id, profit_amount, level, created_at
+                    FROM referral_profits
+                    WHERE referrer_id = %s
+                    ORDER BY created_at DESC
+                ''', (user_id,))
+                referral_details = c.fetchall()
+                referral_text = "\n".join(
+                    f"Referred ID: {row[0]}, Profit: {row[1]} USDT, Level: {row[2]}, Date: {row[3]}"
+                    for row in referral_details
+                ) if referral_details else "No referral profits found."
+                response = (
+                    f"Debug Balance for User {user_id}:\n"
+                    f"Balance: {balance} USDT\n"
+                    f"Seed Profits: {seed_profit} USDT\n"
+                    f"Referral Profits: {referral_profit} USDT\n"
+                    f"Total Profits: {seed_profit + referral_profit} USDT\n"
+                    f"Referral Profit Details:\n{referral_text}"
+                )
+                await update.message.reply_text(response)
+    except Exception as e:
+        logger.error(f"Error debugging balance for user {user_id}: {e}")
+        await update.message.reply_text(f"Error: {str(e)}")        
+
 def main():
     """Run the bot."""
     token = os.getenv("BOT_TOKEN")
@@ -3356,6 +3427,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
+    app.add_handler(CommandHandler("debug_balance", debug_balance))
 
     logger.info("Starting bot")
     app.run_polling()
