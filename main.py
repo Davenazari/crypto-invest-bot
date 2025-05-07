@@ -2875,14 +2875,30 @@ def main():
     """Run the bot."""
     token = os.getenv("BOT_TOKEN")
     if not token:
-        logger.error("BOT_TOKEN not found in environment variables")
-        exit(1)
+        logger.error("BOT_TOKEN is missing. Please set the BOT_TOKEN environment variable.")
+        raise ValueError("Missing BOT_TOKEN")
 
-    app = ApplicationBuilder().token(token).build()
+    if not DATABASE_URL:
+        logger.error("DATABASE_URL is missing. Please set the DATABASE_URL environment variable.")
+        raise ValueError("Missing DATABASE_URL")
+
+    # Initialize database
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
 
     # Run fix_database for user 5664533861 at startup
-    fix_database(5664533861)
-    logger.info("Ran fix_database for user 5664533861")
+    try:
+        fix_database(5664533861)
+        logger.info("Ran fix_database for user 5664533861")
+    except Exception as e:
+        logger.error(f"Error running fix_database for user 5664533861: {e}")
+        raise
+
+    app = ApplicationBuilder().token(token).build()
 
     conv_handler = ConversationHandler(
         entry_points=[
@@ -2936,7 +2952,7 @@ def main():
             ],
             HARVEST_SEED: [
                 CallbackQueryHandler(
-                    handle_harvest_seed,
+                    handle_plant_seed,
                     pattern=r"^(harvest_\d+|wallet)$"
                 ),
             ],
