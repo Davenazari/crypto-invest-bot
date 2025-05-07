@@ -1114,17 +1114,31 @@ def get_referral_chain(user_id):
                 chain = []
                 current_id = user_id
                 for level in range(1, 4):
-                    c.execute('SELECT user_id FROM users WHERE user_id = %s', (current_id,))
+                    c.execute('SELECT referrer_id FROM referrals WHERE referred_id = %s AND level = %s', (current_id, 1))
                     result = c.fetchone()
                     if result:
                         chain.append((result[0], level))
                         current_id = result[0]
                     else:
                         break
+                logger.info(f"Referral chain for user {user_id}: {chain}")
                 return chain
     except Exception as e:
         logger.error(f"Error getting referral chain for user {user_id}: {e}")
         return []
+
+def has_referrals(user_id):
+    """Check if a user has any referrers."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT COUNT(*) FROM referrals WHERE referred_id = %s', (user_id,))
+                count = c.fetchone()[0]
+                logger.info(f"User {user_id} has {count} referrers")
+                return count > 0
+    except Exception as e:
+        logger.error(f"Error checking referrals for user {user_id}: {e}")
+        return False
 
 def get_user_seeds(user_id):
     """Retrieve all seeds owned by a user."""
@@ -1448,17 +1462,6 @@ async def admin_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-def has_referrals(user_id):
-    """Check if user has any referrals."""
-    try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('SELECT COUNT(*) FROM referrals WHERE referred_id = %s', (user_id,))
-                count = c.fetchone()[0]
-                return count > 0
-    except Exception as e:
-        logger.error(f"Error checking referrals for user {user_id}: {e}")
-        return False
 
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2800,6 +2803,7 @@ async def handle_admin_action(update: Update, context: ContextTypes.DEFAULT_TYPE
                 add_user_seed(target_user_id, seed_id)
                 if has_referrals(target_user_id):
                     chain = get_referral_chain(target_user_id)
+                    logger.info(f"Referral chain for user {target_user_id}: {chain}")
                     profit_rates = {1: 0.05, 2: 0.03, 3: 0.01}
                     for referrer_id, level in chain:
                         if level in profit_rates:
@@ -3030,6 +3034,7 @@ async def approve_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE
             add_user_seed(target_user_id, seed_id)
             if has_referrals(target_user_id):
                 chain = get_referral_chain(target_user_id)
+                logger.info(f"Referral chain for user {target_user_id}: {chain}")
                 profit_rates = {1: 0.05, 2: 0.03, 3: 0.01}
                 for referrer_id, level in chain:
                     if level in profit_rates:
