@@ -207,8 +207,17 @@ messages = {
             "🔄 لطفاً دوباره از ابتدا شروع کنید."
         ),
         "referral_menu": (
-            "🤝 *دعوت کارگر به مزرعه*\n"
-            "لطفاً یک گزینه انتخاب کنید:"
+            "🤝 *کارگرهای مزرعه شما*\n"
+            "لطفاً یکی از کارگرهای دعوت‌شده رو برای مشاهده جزئیات انتخاب کنید:"
+        ),
+        "referral_details": lambda username, join_date, seeds, profit, transactions: (
+            f"👤 *کارگر: @{username}*\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"📅 *تاریخ ورود*: {join_date}\n"
+            f"🌱 *بذرهای خریداری‌شده*:\n{seeds or 'هیچ بذری خریداری نشده'}\n"
+            f"💰 *سود کسب‌شده برای شما*: `{profit}` تتر\n"
+            f"📜 *تراکنش‌ها*:\n{transactions or 'بدون تراکنش'}\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
         ),
         "referral_info": lambda link, level1, level2, level3, total_profit, transactions: (
             f"🤝 *کارگرهای مزرعه*\n"
@@ -460,8 +469,17 @@ messages = {
             "🔄 Please start over."
         ),
         "referral_menu": (
-            "🤝 *Invite Farm Workers*\n"
-            "Please select an option:"
+            "🤝 *Your Farm Workers*\n"
+            "Please select one of your invited workers to view details:"
+        ),
+        "referral_details": lambda username, join_date, seeds, profit, transactions: (
+            f"👤 *Worker: @{username}*\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"📅 *Join Date*: {join_date}\n"
+            f"🌱 *Purchased Seeds*:\n{seeds or 'No seeds purchased'}\n"
+            f"💰 *Profit Earned for You*: `{profit}` USDT\n"
+            f"📜 *Transactions*:\n{transactions or 'No transactions'}\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
         ),
         "referral_info": lambda link, level1, level2, level3, total_profit, transactions: (
             f"🤝 *Farm Workers*\n"
@@ -568,12 +586,20 @@ def init_db():
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
+                # اضافه کردن ستون username و created_at به جدول users
+                c.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS username TEXT,
+                    ADD COLUMN IF NOT EXISTS created_at TEXT
+                ''')
                 # Users table
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS users (
                         user_id BIGINT PRIMARY KEY,
                         language TEXT DEFAULT 'en',
                         balance REAL DEFAULT 0.0
+                        username TEXT,
+                        created_at TEXT  
                     )
                 ''')
                 # Seeds table
@@ -718,21 +744,87 @@ def get_user(user_id):
         logger.error(f"Error getting user {user_id}: {e}")
         return None
 
-def upsert_user(user_id, language='en', referred_by=None):
-    """Insert or update user in database."""
+def upsert_user(user_id, language='en', username=None, referred_by=None):
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
+                created_at = datetime.now(pytz.timezone('Asia/Tehran')).isoformat()
                 c.execute('''
-                    INSERT INTO users (user_id, language, balance)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET language = %s
-                ''', (user_id, language, 0.0, language))
+                    INSERT INTO users (user_id, language, balance, username, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (user_id) DO UPDATE 
+                    SET language = %s, username = %s
+                ''', (user_id, language, 0.0, username, created_at, language, username))
                 conn.commit()
-                logger.info(f"Upserted user {user_id} with language {language}")
+                logger.info(f"Upserted user {user_id} with language {language}, username {username}")
     except Exception as e:
         logger.error(f"Error upserting user {user_id}: {e}")
         raise
+
+# تابع جدید برای گرفتن جزئیات رفرال
+def get_referral_details(referred_id, lang):
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                # گرفتن اطلاعات کاربر (username و زمان ورود)
+                c.execute('''
+                    SELECT username, created_at 
+                    FROM users 
+                    WHERE user_id = %s
+                ''', (referred_id,))
+                user_info = c.fetchone()
+                if not user_info:
+                    return None
+                username, join_date = user_info
+
+                # گرفتن بذرهای خریداری‌شده
+                c.execute('''
+                    SELECT s.name, s.name_fa, t.created_at
+                    FROM user_seeds us
+                    JOIN seeds s ON us.seed_id = s.seed_id
+                    JOIN transactions t ON t.seed_id = s.seed_id AND t.user_id = %s AND t.status = 'confirmed'
+                    WHERE us.user_id = %s
+                    ORDER BY t.created_at DESC
+                ''', (referred_id, referred_id))
+                seeds = c.fetchall()
+                seeds_text = "\n".join(
+                    f"- {row[1] if lang == 'fa' else row[0]} (خرید: {row[2]})"
+                    for row in seeds
+                ) if seeds else None
+
+                # گرفتن سود رفرال
+                c.execute('''
+                    SELECT SUM(profit_amount) 
+                    FROM referral_profits 
+                    WHERE referred_id = %s
+                ''', (referred_id,))
+                profit = c.fetchone()[0] or 0.0
+
+                # گرفتن تراکنش‌ها
+                c.execute('''
+                    SELECT t.amount, t.network, t.status, t.type, t.created_at, s.name, s.name_fa
+                    FROM transactions t
+                    LEFT JOIN seeds s ON t.seed_id = s.seed_id
+                    WHERE t.user_id = %s AND t.type = 'deposit' AND t.status = 'confirmed'
+                    ORDER BY t.created_at DESC
+                    LIMIT 10
+                ''', (referred_id,))
+                transactions = c.fetchall()
+                transactions_text = "\n".join(
+                    f"- {row[5] or row[6] or 'Unknown'}: {row[0]} USDT ({row[4]})"
+                    for row in transactions
+                ) if transactions else None
+
+                return {
+                    "username": username,
+                    "join_date": join_date,
+                    "seeds": seeds_text,
+                    "profit": profit,
+                    "transactions": transactions_text
+                }
+    except Exception as e:
+        logger.error(f"Error getting referral details for referred_id {referred_id}: {e}")
+        return None    
 
 def update_balance(user_id, amount):
     """Update user balance."""
@@ -874,10 +966,10 @@ def record_referral_profit(referrer_id, referred_id, transaction_id, level, prof
         raise
 
 def get_referral_stats(user_id):
-    """Get referral statistics."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
+                # تعداد رفرال‌ها در هر سطح
                 c.execute('''
                     SELECT level, COUNT(*) 
                     FROM referrals 
@@ -887,12 +979,26 @@ def get_referral_stats(user_id):
                 level_counts = {1: 0, 2: 0, 3: 0}
                 for level, count in c.fetchall():
                     level_counts[level] = count
+
+                # کل سود رفرال
                 c.execute('''
                     SELECT SUM(profit_amount) 
                     FROM referral_profits 
                     WHERE referrer_id = %s
                 ''', (user_id,))
                 total_profit = c.fetchone()[0] or 0.0
+
+                # گرفتن رفرال‌ها برای نمایش دکمه‌ها
+                c.execute('''
+                    SELECT r.referred_id, u.username 
+                    FROM referrals r
+                    JOIN users u ON r.referred_id = u.user_id
+                    WHERE r.referrer_id = %s
+                    ORDER BY r.id
+                ''', (user_id,))
+                referrals = c.fetchall()
+
+                # گرفتن تراکنش‌های رفرال‌ها
                 c.execute('''
                     SELECT t.amount, t.network, t.status, t.type, t.created_at, r.level, s.name, s.name_fa
                     FROM transactions t
@@ -903,10 +1009,11 @@ def get_referral_stats(user_id):
                     LIMIT 10
                 ''', (user_id,))
                 transactions = c.fetchall()
-                return level_counts[1], level_counts[2], level_counts[3], total_profit, transactions
+
+                return level_counts[1], level_counts[2], level_counts[3], total_profit, transactions, referrals
     except Exception as e:
         logger.error(f"Error getting referral stats for user {user_id}: {e}")
-        return 0, 0, 0, 0.0, []
+        return 0, 0, 0, 0.0, [], []
 
 def get_referral_chain(user_id):
     """Get referral chain for a user."""
@@ -1154,11 +1261,13 @@ def get_wallet_menu(lang, balance, has_seeds):
     buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
 
-def get_referral_menu(lang):
-    """Generate referral menu keyboard."""
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-    ])
+def get_referral_menu(lang, referrals):
+    buttons = [
+        [InlineKeyboardButton(f"👤 @{ref[1] or 'Unknown'}", callback_data=f"referral_{ref[0]}")]
+        for ref in referrals
+    ]
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(buttons)
 
 def get_language_menu(lang):
     """Generate language selection keyboard."""
@@ -1261,15 +1370,13 @@ def has_referrals(user_id):
 
 # Telegram handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command."""
     user_id = update.effective_user.id
+    username = update.effective_user.username
     args = context.args
     logger.info(f"User {user_id} called /start with args: {args}")
     
     try:
         context.user_data.clear()
-        logger.info(f"Cleared user_data for user {user_id}")
-        
         referred_by = None
         if args and args[0].startswith("ref_"):
             try:
@@ -1282,10 +1389,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         user = get_user(user_id)
         lang = user[0] if user else "en"
-        logger.info(f"User {user_id} language: {lang}, user_data: {user}")
         if not user:
             logger.info(f"Creating new user {user_id} with referred_by {referred_by}")
-            upsert_user(user_id, language="en")
+            upsert_user(user_id, language="en", username=username)
             if referred_by:
                 add_referral(referred_by, user_id, 1)
                 chain = get_referral_chain(referred_by)
@@ -1557,57 +1663,88 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 return ConversationHandler.END
         elif query.data == "referral":
             try:
-                level1, level2, level3, total_profit, transactions = get_referral_stats(user_id)
-                bot_username = (await context.bot.get_me()).username
-                referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+                level1, level2, level3, total_profit, transactions, referrals = get_referral_stats(user_id)
+                bot = telegram.Bot(token=os.getenv("BOT_TOKEN"))
+                referral_link = f"https://t.me/{(await bot.get_me()).username}?start=ref_{user_id}"
                 
-                if level1 == 0 and level2 == 0 and level3 == 0:
+                transaction_text = ""
+                status_map = {
+                    "confirmed": ("✅ تأییدشده", "✅ Confirmed")
+                }
+                type_map = {
+                    "deposit": ("واریز", "Deposit")
+                }
+                for amount, network, status, type, created_at, level, seed_name, seed_name_fa in transactions:
+                    status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
+                    type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
+                    network_display = network if network else ("بدون شبکه" if lang == "fa" else "No Network")
+                    seed_display = (seed_name_fa if lang == "fa" else seed_name) if seed_name else ("بدون بذر" if lang == "fa" else "No Seed")
+                    transaction_text += (
+                        f"💰 *{type_text}*: `{amount}` تتر\n"
+                        f"🌱 *بذر*: {seed_display}\n"
+                        f"📲 *شبکه*: {network_display}\n"
+                        f"📅 *وضعیت*: {status_text}\n"
+                        f"📊 *سطح*: {level}\n"
+                        f"⏰ *زمان*: {created_at}\n"
+                        f"────────────────────\n"
+                    ) if lang == "fa" else (
+                        f"💰 *{type_text}*: `{amount}` USDT\n"
+                        f"🌱 *Seed*: {seed_display}\n"
+                        f"📲 *Network*: {network_display}\n"
+                        f"📅 *Status*: {status_text}\n"
+                        f"📊 *Level*: {level}\n"
+                        f"⏰ *Time*: {created_at}\n"
+                        f"────────────────────\n"
+                    )
+                if not transaction_text:
+                    transaction_text = "📜 بدون تراکنش" if lang == "fa" else "📜 No transactions"
+
+                if not referrals:
                     await query.message.reply_text(
                         messages[lang]["no_referrals"].replace("YOUR_LINK_WILL_BE_HERE", referral_link),
                         parse_mode="Markdown",
-                        reply_markup=get_referral_menu(lang)
+                        reply_markup=get_referral_menu(lang, referrals)
                     )
                 else:
-                    transaction_text = ""
-                    status_map = {
-                        "confirmed": ("✅ تأییدشده", "✅ Confirmed")
-                    }
-                    type_map = {
-                        "deposit": ("واریز", "Deposit")
-                    }
-                    for amount, network, status, type, created_at, level, seed_name, seed_name_fa in transactions:
-                        status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
-                        type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
-                        network_display = network if network else ("بدون شبکه" if lang == "fa" else "No Network")
-                        seed_display = (seed_name_fa if lang == "fa" else seed_name) if seed_name else ("بدون بذر" if lang == "fa" else "No Seed")
-                        transaction_text += (
-                            f"💰 *{type_text}*: `{amount}` تتر\n"
-                            f"🌱 *بذر*: {seed_display}\n"
-                            f"📲 *شبکه*: {network_display}\n"
-                            f"📅 *وضعیت*: {status_text}\n"
-                            f"📊 *سطح*: {level}\n"
-                            f"⏰ *زمان*: {created_at}\n"
-                            f"────────────────────\n"
-                        ) if lang == "fa" else (
-                            f"💰 *{type_text}*: `{amount}` USDT\n"
-                            f"🌱 *Seed*: {seed_display}\n"
-                            f"📲 *Network*: {network_display}\n"
-                            f"📅 *Status*: {status_text}\n"
-                            f"📊 *Level*: {level}\n"
-                            f"⏰ *Time*: {created_at}\n"
-                            f"────────────────────\n"
-                        )
-                    if not transaction_text:
-                        transaction_text = "📜 بدون تراکنش" if lang == "fa" else "📜 No transactions"
-
                     await query.message.reply_text(
                         messages[lang]["referral_info"](referral_link, level1, level2, level3, total_profit, transaction_text),
                         parse_mode="Markdown",
-                        reply_markup=get_referral_menu(lang)
+                        reply_markup=get_referral_menu(lang, referrals)
                     )
                 return ConversationHandler.END
             except Exception as e:
                 logger.error(f"Error retrieving referral stats for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+        elif query.data.startswith("referral_"):
+            try:
+                referred_id = int(query.data.split("_")[1])
+                details = get_referral_details(referred_id, lang)
+                if not details:
+                    await query.message.reply_text(
+                        messages[lang]["error"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+                await query.message.reply_text(
+                    messages[lang]["referral_details"](
+                        details["username"],
+                        details["join_date"],
+                        details["seeds"],
+                        details["profit"],
+                        details["transactions"]
+                    ),
+                    parse_mode="Markdown",
+                    reply_markup=get_referral_menu(lang, get_referral_stats(user_id)[5])
+                )
+                return ConversationHandler.END
+            except Exception as e:
+                logger.error(f"Error retrieving referral details for user {user_id}, referred_id {referred_id}: {e}")
                 await query.message.reply_text(
                     messages[lang]["error"],
                     parse_mode="Markdown",
@@ -1656,6 +1793,45 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data.clear()
         return ConversationHandler.END
     
+async def test_referral_profit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text(
+            messages["en"]["unauthorized"],
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    SELECT referrer_id, referred_id, profit_amount, level, created_at
+                    FROM referral_profits
+                    WHERE referrer_id = %s
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                ''', (user_id,))
+                profits = c.fetchall()
+                if not profits:
+                    await update.message.reply_text(
+                        "📉 *No Referral Profits*\nNo profits recorded for your referrals.",
+                        parse_mode="Markdown"
+                    )
+                    return
+                response = "📈 *Referral Profits*\n"
+                for profit in profits:
+                    response += (
+                        f"- Referred ID: {profit[1]}, Profit: {profit[2]} USDT, "
+                        f"Level: {profit[3]}, Date: {profit[4]}\n"
+                    )
+                await update.message.reply_text(response, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in test_referral_profit for user {user_id}: {e}")
+        await update.message.reply_text(
+            f"❌ *Error*: {str(e)}",
+            parse_mode="Markdown"
+        )    
 
 async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle seed selection for purchase."""
@@ -2956,7 +3132,7 @@ def main():
             CommandHandler("start", start),
             CallbackQueryHandler(
                 handle_menu_callback,
-                pattern=r"^(buy_seed|wallet|referral|language|support|withdraw|history|plant_seed|harvest_seed)$"
+                pattern=r"^(buy_seed|wallet|referral|language|support|withdraw|history|plant_seed|harvest_seed|referral_\d+)$"
             ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
             CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"),
@@ -3042,6 +3218,8 @@ def main():
     app.add_handler(CommandHandler("db_test", db_test))
     app.add_handler(CommandHandler("admintest", admin_test))
     app.add_handler(CommandHandler("checkseeds", check_seeds))
+    app.add_handler(CommandHandler("test_referral_profit", test_referral_profit))
+    app.add_handler(CommandHandler("cancel", cancel))
     app.add_error_handler(error_handler)
 
     logger.info("Starting bot")
