@@ -239,6 +239,10 @@ messages = {
             f"🔗 *لینک دعوت شما*: `YOUR_LINK_WILL_BE_HERE`\n"
             f"📌 لینک رو به اشتراک بگذارید تا سود کسب کنید!"
         ),
+        "referral_profit_notification": lambda profit, level, referred_id: (
+            f"🎉 *سود جدید رفرال!*\n"
+            f"شما {profit} تتر سود از کاربر {referred_id} (سطح {level}) دریافت کردید!"
+        ),
         "plant_seed": (
             "🌱 **کاشت بذر** 🌿\n"
             "لطفاً **بذری** که می‌خواهید امروز بکارید را انتخاب کنید:\n"
@@ -500,6 +504,10 @@ messages = {
             "You haven't invited any workers to your farm yet.\n"
             f"🔗 *Your Referral Link*: `YOUR_LINK_WILL_BE_HERE`\n"
             f"📌 Share your link to start earning!"
+        ),
+        "referral_profit_notification": lambda profit, level, referred_id: (
+            f"🎉 *New Referral Profit!*\n"
+            f"You earned {profit} USDT from user {referred_id} (Level {level})!"
         ),
         "plant_seed": (
             "🌱 **Plant Seed** 🌿\n"
@@ -808,7 +816,7 @@ def upsert_user(user_id, language='en', username=None, referred_by=None):
         raise
 
 # تابع جدید برای گرفتن جزئیات رفرال
-def get_referral_details(referred_id, lang):
+def get_referral_details(referrer_id, referred_id, lang):
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
@@ -838,12 +846,12 @@ def get_referral_details(referred_id, lang):
                     for row in seeds
                 ) if seeds else None
 
-                # گرفتن سود رفرال
+                # گرفتن سود رفرال فقط برای referrer_id خاص
                 c.execute('''
                     SELECT SUM(profit_amount) 
                     FROM referral_profits 
-                    WHERE referred_id = %s
-                ''', (referred_id,))
+                    WHERE referrer_id = %s AND referred_id = %s
+                ''', (referrer_id, referred_id))
                 profit = c.fetchone()[0] or 0.0
 
                 # گرفتن تراکنش‌ها
@@ -869,7 +877,7 @@ def get_referral_details(referred_id, lang):
                     "transactions": transactions_text
                 }
     except Exception as e:
-        logger.error(f"Error getting referral details for referred_id {referred_id}: {e}")
+        logger.error(f"Error getting referral details for referrer {referrer_id}, referred {referred_id}: {e}")
         return None    
 
 def update_balance(user_id, amount):
@@ -1041,7 +1049,7 @@ def handle_referral(referrer_id, referred_id):
         raise    
 
 def record_referral_profit(referrer_id, referred_id, transaction_id, level, profit_amount):
-    """Record referral profit."""
+    """Record referral profit and send notification to referrer."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
@@ -1052,6 +1060,23 @@ def record_referral_profit(referrer_id, referred_id, transaction_id, level, prof
                 ''', (referrer_id, referred_id, transaction_id, level, profit_amount, created_at))
                 conn.commit()
                 logger.info(f"Recorded referral profit: referrer {referrer_id}, referred {referred_id}, profit {profit_amount}, level {level}")
+        
+        # ارسال اعلان به رفرر
+        try:
+            from telegram import Bot
+            bot = Bot(token=os.getenv("BOT_TOKEN"))
+            user = get_user(referrer_id)
+            lang = user[0] if user else "en"
+            bot.send_message(
+                chat_id=referrer_id,
+                text=messages[lang]["referral_profit_notification"](
+                    round(profit_amount, 2), level, referred_id
+                ),
+                parse_mode="Markdown"
+            )
+            logger.info(f"Sent referral profit notification to referrer {referrer_id}")
+        except telegram.error.TelegramError as e:
+            logger.error(f"Failed to send referral profit notification to referrer {referrer_id}: {e}")
     except Exception as e:
         logger.error(f"Error recording referral profit for referrer {referrer_id}: {e}")
         raise
@@ -1815,7 +1840,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                         f"📲 *Network*: {network_display}\n"
                         f"📅 *Status*: {status_text}\n"
                         f"📊 *Level*: {level}\n"
-                        f"⏰ *Time*: {created_at}\n"
+                        f"⏰ *زمان*: {created_at}\n"
                         f"────────────────────\n"
                     )
                 if not transaction_text:
@@ -1842,10 +1867,10 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-        elif query.data.startswith("referral_"):
+        elif query.data.startswith("referral_") and query.data != "referral":
             try:
                 referred_id = int(query.data.split("_")[1])
-                details = get_referral_details(referred_id, lang)
+                details = get_referral_details(user_id, referred_id, lang)
                 if not details:
                     await query.message.reply_text(
                         messages[lang]["error"],
