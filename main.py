@@ -1137,14 +1137,16 @@ def get_main_menu(lang):
     ])
 
 def get_seed_selection_menu(lang):
+    """Generate seed selection keyboard."""
     buttons = [
         [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"], callback_data=f"seed_{idx}")]
         for idx, seed in enumerate(SEEDS)
     ]
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")])
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
 
 def get_wallet_menu(lang, balance, has_seeds):
+    """Generate wallet menu keyboard."""
     buttons = [
         [
             InlineKeyboardButton("🌱 کاشت بذر" if lang == "fa" else "🌱 Plant Seed", callback_data="plant_seed"),
@@ -1157,7 +1159,7 @@ def get_wallet_menu(lang, balance, has_seeds):
     ]
     if balance >= 15:
         buttons.append([InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw")])
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")])
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
 
 def get_referral_menu(lang):
@@ -1358,14 +1360,21 @@ async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT
           return ConversationHandler.END
 
 async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle menu button callbacks."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
     if not user:
-        await query.message.reply_text(messages["en"]["error"], parse_mode="Markdown", reply_markup=get_main_menu("en"))
+        logger.error(f"Failed to retrieve or create user {user_id}")
+        await query.message.reply_text(
+            messages["en"]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu("en")
+        )
         return ConversationHandler.END
     lang, balance = user
+    logger.info(f"User {user_id} triggered menu callback: {query.data}")
 
     try:
         if query.data == "buy_seed":
@@ -1377,7 +1386,6 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return SELECT_SEED
         elif query.data == "wallet":
-            # نمایش منوی کیف‌پول
             try:
                 with psycopg2.connect(DATABASE_URL) as conn:
                     with conn.cursor() as c:
@@ -1397,41 +1405,11 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                         seeds_text = ", ".join(seeds) if seeds else None
             except psycopg2.Error as e:
                 logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(messages[lang]["db_error"], parse_mode="Markdown", reply_markup=get_main_menu(lang))
-                return ConversationHandler.END
-
-            await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
-                parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
-            )
-            return ConversationHandler.END
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
-            await query.message.reply_text(messages[lang]["main_menu"], parse_mode="Markdown", reply_markup=get_main_menu(lang))
-            return ConversationHandler.END
-        elif query.data == "back":
-            # بازگشت به منوی کیف‌پول
-            try:
-                with psycopg2.connect(DATABASE_URL) as conn:
-                    with conn.cursor() as c:
-                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
-                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
-                        transaction_count = c.fetchone()[0]
-                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
-                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
-                        c.execute('''
-                            SELECT s.name, s.name_fa
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            WHERE us.user_id = %s
-                        ''', (user_id,))
-                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        seeds_text = ", ".join(seeds) if seeds else None
-            except psycopg2.Error as e:
-                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(messages[lang]["db_error"], parse_mode="Markdown", reply_markup=get_main_menu(lang))
+                await query.message.reply_text(
+                    messages[lang]["db_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
                 return ConversationHandler.END
 
             await query.message.reply_text(
@@ -1727,35 +1705,6 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 ])
             )
             return DEPOSIT_AMOUNT
-        elif query.data == "back":
-            # بازگشت به منوی کیف‌پول
-            try:
-                with psycopg2.connect(DATABASE_URL) as conn:
-                    with conn.cursor() as c:
-                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
-                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
-                        transaction_count = c.fetchone()[0]
-                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
-                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
-                        c.execute('''
-                            SELECT s.name, s.name_fa
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            WHERE us.user_id = %s
-                        ''', (user_id,))
-                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        seeds_text = ", ".join(seeds) if seeds else None
-            except psycopg2.Error as e:
-                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(messages[lang]["db_error"], parse_mode="Markdown", reply_markup=get_main_menu(lang))
-                return ConversationHandler.END
-            await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
-                parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
-            )
-            return ConversationHandler.END
         elif query.data == "balance_purchase":
             seed_idx = context.user_data.get("seed_idx")
             seed_price = context.user_data.get("seed_price")
@@ -1953,29 +1902,6 @@ async def handle_plant_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_wallet_menu(lang, user[1], True)
             )
             return ConversationHandler.END
-        elif query.data == "back":
-            balance = user[1] if user else 0
-            try:
-                with psycopg2.connect(DATABASE_URL) as conn:
-                    with conn.cursor() as c:
-                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        total_profit = c.fetchone()[0] or 0.0
-                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
-                        transaction_count = c.fetchone()[0]
-                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
-                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
-                        c.execute('''
-                            SELECT s.name, s.name_fa
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            WHERE us.user_id = %s
-                        ''', (user_id,))
-                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        seeds_text = ", ".join(seeds) if seeds else None
-            except psycopg2.Error as e:
-                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(messages[lang]["db_error"], parse_mode="Markdown", reply_markup=get_main_menu(lang))
-                return ConversationHandler.END
         elif query.data == "wallet":
             balance = user[1] if user else 0
             try:
@@ -2949,37 +2875,21 @@ def main():
     """Run the bot."""
     token = os.getenv("BOT_TOKEN")
     if not token:
-        logger.error("BOT_TOKEN is missing. Please set the BOT_TOKEN environment variable.")
-        raise ValueError("Missing BOT_TOKEN")
-
-    if not DATABASE_URL:
-        logger.error("DATABASE_URL is missing. Please set the DATABASE_URL environment variable.")
-        raise ValueError("Missing DATABASE_URL")
-
-    # Initialize database
-    try:
-        init_db()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
-
-    # Run fix_database for user 5664533861 at startup
-    try:
-        fix_database(5664533861)
-        logger.info("Ran fix_database for user 5664533861")
-    except Exception as e:
-        logger.error(f"Error running fix_database for user 5664533861: {e}")
-        raise
+        logger.error("BOT_TOKEN not found in environment variables")
+        exit(1)
 
     app = ApplicationBuilder().token(token).build()
+
+    # Run fix_database for user 5664533861 at startup
+    fix_database(5664533861)
+    logger.info("Ran fix_database for user 5664533861")
 
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
             CallbackQueryHandler(
                 handle_menu_callback,
-                pattern=r"^(buy_seed|wallet|referral|language|support|back_to_menu|withdraw|history|plant_seed|harvest_seed|back)$"
+                pattern=r"^(buy_seed|wallet|referral|language|support|back_to_menu|withdraw|history|plant_seed|harvest_seed)$"
             ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
             CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"),
@@ -2993,47 +2903,47 @@ def main():
             SELECT_SEED: [
                 CallbackQueryHandler(
                     handle_seed_selection,
-                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase|back)$"
+                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase|wallet)$"
                 ),
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deposit_amount),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back$"),
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             DEPOSIT_NETWORK: [
                 CallbackQueryHandler(
                     handle_deposit_network,
-                    pattern=r"^(network_.*|back)$"
+                    pattern=r"^(network_.*|wallet)$"
                 ),
             ],
             DEPOSIT_TXID: [
                 MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back$"),
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             WITHDRAW_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_amount),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back$"),
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             WITHDRAW_ADDRESS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_address),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^back$"),
+                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
             ],
             PLANT_SEED: [
                 CallbackQueryHandler(
                     handle_plant_seed,
-                    pattern=r"^(plant_\d+|back)$"
+                    pattern=r"^(plant_\d+|wallet)$"
                 ),
             ],
             HARVEST_SEED: [
                 CallbackQueryHandler(
-                    handle_plant_seed,
-                    pattern=r"^(harvest_\d+|back)$"
+                    handle_harvest_seed,
+                    pattern=r"^(harvest_\d+|wallet)$"
                 ),
             ],
             CONFIRM_BALANCE_PURCHASE: [
                 CallbackQueryHandler(
                     handle_balance_purchase,
-                    pattern=r"^(confirm_balance_purchase|back)$"
+                    pattern=r"^(confirm_balance_purchase|wallet)$"
                 ),
             ],
         },
