@@ -1160,6 +1160,16 @@ def get_referral_menu(lang):
         [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
     ])
 
+def get_language_menu(lang):
+    """Generate language selection keyboard."""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("فارسی 🇮🇷", callback_data="lang_fa"),
+            InlineKeyboardButton("English 🇬🇧", callback_data="lang_en")
+        ],
+        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+    ])
+
 # Error handler
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors."""
@@ -1611,6 +1621,13 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
                 ])
+            )
+            return ConversationHandler.END
+        elif query.data == "language":
+            await query.message.reply_text(
+                messages[lang]["language_menu"],
+                parse_mode="Markdown",
+                reply_markup=get_language_menu(lang)
             )
             return ConversationHandler.END
         elif query.data == "back_to_menu":
