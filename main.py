@@ -30,14 +30,14 @@ DEFAULT_ADMIN_ID = 536587863  # Changed to integer
 # Supported languages
 langs = {"فارسی": "fa", "English": "en"}
 
-# Seed data
+# 🌱 **لیست بذرهای مزرعه** 🌾
 SEEDS = [
-    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.001},
-    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.0015},
-    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.002},
-    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0028},
-    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.004},
-    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.005},
+    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.001, "emoji": "🍅"},
+    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.0015, "emoji": "🥒"},
+    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.002, "emoji": "🍊"},
+    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0028, "emoji": "🍎"},
+    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.004, "emoji": "🍌"},
+    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.005, "emoji": "🥭"},
 ]
 
 # Localized messages
@@ -51,20 +51,20 @@ messages = {
         ),
         "main_menu": "🌾 *منوی مزرعه*\nلطفاً یک گزینه انتخاب کنید:",
         "select_seed": (
-            "🌱 *انتخاب بذر*\n"
-            "لطفاً بذری که می‌خواهید بخرید رو انتخاب کنید:\n"
-            "👇 یکی از بذرهای زیر رو انتخاب کنید 👇"
+            "🌱 **انتخاب بذر** 🌾\n"
+            "لطفاً **بذر** مورد نظر برای خرید را انتخاب کنید:\n"
+            "👇 از **بذرهای** زیر یکی را انتخاب کنید 👇"
         ),
-        "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly: (
-            f"🌾 *بذر {name}*\n"
-            f"────────────────────\n"
-            f"💰 *قیمت*: `{price}` تتر\n"
-            f"📆 *سود روزانه*: `{daily_profit}` تتر\n"
-            f"📅 *سود هفتگی*: `{weekly_profit}` تتر\n"
-            f"🗓️ *سود ماهانه*: `{monthly_profit}` تتر\n"
-            f"💸 *مجموع (اصل + سود ماهانه)*: `{total_monthly}` تتر\n"
-            f"────────────────────\n"
-            f"🌱 آماده خرید این بذر هستید؟"
+        "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, emoji: (
+            f"🌾 **بذر {name}** {emoji}\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"💰 **قیمت**: `{price}` تتر\n"
+            f"📆 **سود روزانه**: `{daily_profit}` تتر\n"
+            f"📅 **سود هفتگی**: `{weekly_profit}` تتر\n"
+            f"🗓️ **سود ماهانه**: `{monthly_profit}` تتر\n"
+            f"💸 **مجموع (اصل + سود)**: `{total_monthly}` تتر\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"🌱 **آماده خرید این بذر هستید؟**"
         ),
         "ask_amount": (
             "💰 *واریز برای خرید بذر*\n"
@@ -121,15 +121,15 @@ messages = {
         ),
         "wallet_menu": "🌾 *مزرعه من*\nلطفاً یک گزینه انتخاب کنید:",
         "wallet_balance": lambda balance, seeds, total_profit, transaction_count, last_transaction: (
-            f"🌾 *مزرعه شما*\n"
-            f"────────────────────\n"
-            f"💰 *موجودی*: `{balance}` تتر\n"
-            f"🌱 *بذرهای شما*: {seeds or 'هیچ بذری ندارید'}\n"
-            f"📈 *کل سود کسب‌شده*: `{total_profit}` تتر\n"
-            f"📝 *تراکنش‌های موفق*: `{transaction_count}`\n"
-            f"⏰ *آخرین تراکنش*: {'ندارد' if not last_transaction else last_transaction}\n"
-            f"────────────────────\n"
-            f"📌 برای کاشت، برداشت یا خرید بذر جدید، گزینه‌های زیر رو انتخاب کنید."
+            f"🌾 **مزرعه شما** 🌱\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"💰 **موجودی**: `{balance}` تتر\n"
+            f"🌱 **بذرهای شما**: {seeds or 'هیچ بذری ندارید'}\n"
+            f"📈 **کل سود کسب‌شده**: `{total_profit}` تتر\n"
+            f"📝 **تراکنش‌های موفق**: `{transaction_count}`\n"
+            f"⏰ **آخرین تراکنش**: {'ندارد' if not last_transaction else last_transaction}\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"📌 برای **کاشت**، **برداشت** یا **خرید بذر جدید**، گزینه‌های زیر را انتخاب کنید."
         ),
         "withdraw": "🚜 *برداشت سود*",
         "ask_withdraw_amount": (
@@ -231,9 +231,9 @@ messages = {
             f"📌 لینک رو به اشتراک بگذارید تا سود کسب کنید!"
         ),
         "plant_seed": (
-            "🌱 *کاشت بذر*\n"
-            "لطفاً بذری که می‌خواهید امروز بکارید رو انتخاب کنید:\n"
-            "👇 یکی از بذرهای زیر رو انتخاب کنید 👇"
+            "🌱 **کاشت بذر** 🌿\n"
+            "لطفاً **بذری** که می‌خواهید امروز بکارید را انتخاب کنید:\n"
+            "👇 یکی از **بذرهای** زیر را انتخاب کنید 👇"
         ),
         "plant_success": (
             "🌱 *بذر کاشته شد!*\n"
@@ -245,9 +245,9 @@ messages = {
             "📌 فردا دوباره تلاش کنید یا بذر دیگه‌ای بکارید."
         ),
         "harvest_seed": (
-            "🚜 *برداشت سود*\n"
-            "لطفاً بذری که می‌خواهید سودش رو برداشت کنید انتخاب کنید:\n"
-            "👇 یکی از بذرهای زیر رو انتخاب کنید 👇"
+            "🚜 **برداشت سود** 💰\n"
+            "لطفاً **بذری** که می‌خواهید **سودش** را برداشت کنید انتخاب کنید:\n"
+            "👇 یکی از **بذرهای** زیر را انتخاب کنید 👇"
         ),
         "harvest_success": lambda amount: (
             f"🎉 *سود برداشت شد!*\n"
@@ -304,20 +304,20 @@ messages = {
         ),
         "main_menu": "🌾 *Farm Menu*\nPlease select an option:",
         "select_seed": (
-            "🌱 *Select Seed*\n"
-            "Please choose the seed you want to buy:\n"
-            "👇 Choose one of the seeds below 👇"
+            "🌱 **Select Seed** 🌾\n"
+            "Please choose a **seed** to buy:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
-        "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly: (
-            f"🌾 *{name} Seed*\n"
-            f"────────────────────\n"
-            f"💰 *Price*: `{price}` USDT\n"
-            f"📆 *Daily Profit*: `{daily_profit}` USDT\n"
-            f"📅 *Weekly Profit*: `{weekly_profit}` USDT\n"
-            f"🗓️ *Monthly Profit*: `{monthly_profit}` USDT\n"
-            f"💸 *Total (Principal + Monthly Profit)*: `{total_monthly}` USDT\n"
-            f"────────────────────\n"
-            f"🌱 Ready to buy this seed?"
+        "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, emoji: (
+            f"🌾 **{name} Seed** {emoji}\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"💰 **Price**: `{price}` USDT\n"
+            f"📆 **Daily Profit**: `{daily_profit}` USDT\n"
+            f"📅 **Weekly Profit**: `{weekly_profit}` USDT\n"
+            f"🗓️ **Monthly Profit**: `{monthly_profit}` USDT\n"
+            f"💸 **Total (Principal + Profit)**: `{total_monthly}` USDT\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"🌱 **Ready to buy this seed?**"
         ),
         "ask_amount": (
             "💰 *Deposit for Seed Purchase*\n"
@@ -374,15 +374,15 @@ messages = {
         ),
         "wallet_menu": "🌾 *My Farm*\nPlease select an option:",
         "wallet_balance": lambda balance, seeds, total_profit, transaction_count, last_transaction: (
-            f"🌾 *Your Farm*\n"
-            f"────────────────────\n"
-            f"💰 *Balance*: `{balance}` USDT\n"
-            f"🌱 *Your Seeds*: {seeds or 'No seeds yet'}\n"
-            f"📈 *Total Profit Earned*: `{total_profit}` USDT\n"
-            f"📝 *Successful Transactions*: `{transaction_count}`\n"
-            f"⏰ *Last Transaction*: {'None' if not last_transaction else last_transaction}\n"
-            f"────────────────────\n"
-            f"📌 Choose an option to plant, harvest, or buy new seeds."
+            f"🌾 **Your Farm** 🌱\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"💰 **Balance**: `{balance}` USDT\n"
+            f"🌱 **Your Seeds**: {seeds or 'No seeds yet'}\n"
+            f"📈 **Total Profit Earned**: `{total_profit}` USDT\n"
+            f"📝 **Successful Transactions**: `{transaction_count}`\n"
+            f"⏰ **Last Transaction**: {'None' if not last_transaction else last_transaction}\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"📌 Choose an option to **plant**, **harvest**, or **buy new seeds**."
         ),
         "withdraw": "🚜 *Harvest Profits*",
         "ask_withdraw_amount": (
@@ -484,9 +484,9 @@ messages = {
             f"📌 Share your link to start earning!"
         ),
         "plant_seed": (
-            "🌱 *Plant Seed*\n"
-            "Please choose the seed you want to plant today:\n"
-            "👇 Choose one of the seeds below 👇"
+            "🌱 **Plant Seed** 🌿\n"
+            "Please choose a **seed** to plant today:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
         "plant_success": (
             "🌱 *Seed Planted!*\n"
@@ -498,9 +498,9 @@ messages = {
             "📌 Try again tomorrow or plant another seed."
         ),
         "harvest_seed": (
-            "🚜 *Harvest Profit*\n"
-            "Please choose the seed you want to harvest profit from:\n"
-            "👇 Choose one of the seeds below 👇"
+            "🚜 **Harvest Profit** 💰\n"
+            "Please choose a **seed** to harvest its **profit**:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
         "harvest_success": lambda amount: (
             f"🎉 *Profit Harvested!*\n"
@@ -1121,25 +1121,25 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
 
 # Menu generation
 def get_main_menu(lang):
-    """Generate main menu keyboard."""
+    """🌾 Generate **main menu** keyboard with enhanced visuals."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed"),
-            InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")
+            InlineKeyboardButton("🌱 **خرید بذر**" if lang == "fa" else "🌱 **Buy Seed**", callback_data="buy_seed"),
+            InlineKeyboardButton("🌾 **مزرعه من**" if lang == "fa" else "🌾 **My Farm**", callback_data="wallet")
         ],
         [
-            InlineKeyboardButton("🤝 دعوت کارگر" if lang == "fa" else "🤝 Invite Workers", callback_data="referral"),
-            InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")
+            InlineKeyboardButton("🤝 **دعوت کارگر**" if lang == "fa" else "🤝 **Invite Workers**", callback_data="referral"),
+            InlineKeyboardButton("🌐 **زبان**" if lang == "fa" else "🌐 **Language**", callback_data="language")
         ],
         [
-            InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")
+            InlineKeyboardButton("📩 **پشتیبانی**" if lang == "fa" else "📩 **Support**", callback_data="support")
         ]
     ])
 
 def get_seed_selection_menu(lang):
-    """Generate seed selection keyboard."""
+    """🌱 Generate seed selection keyboard with emojis."""
     buttons = [
-        [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"], callback_data=f"seed_{idx}")]
+        [InlineKeyboardButton(f"{seed['emoji']} {seed['name_fa' if lang == 'fa' else 'name']}", callback_data=f"seed_{idx}")]
         for idx, seed in enumerate(SEEDS)
     ]
     buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")])
