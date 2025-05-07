@@ -1142,7 +1142,7 @@ def get_seed_selection_menu(lang):
         [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"], callback_data=f"seed_{idx}")]
         for idx, seed in enumerate(SEEDS)
     ]
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")])
     return InlineKeyboardMarkup(buttons)
 
 def get_wallet_menu(lang, balance, has_seeds):
@@ -1646,7 +1646,78 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         context.user_data.clear()
         return ConversationHandler.END
+    
+async def handle_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle back button callbacks."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    balance = user[1] if user else 0
+    logger.info(f"User {user_id} triggered back callback: {query.data}")
 
+    try:
+        if query.data == "back_to_menu":
+            # Clear user data and return to main menu
+            context.user_data.clear()
+            await query.message.reply_text(
+                messages[lang]["main_menu"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+        elif query.data == "wallet":
+            # Return to wallet menu
+            try:
+                with psycopg2.connect(DATABASE_URL) as conn:
+                    with conn.cursor() as c:
+                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                        total_profit = c.fetchone()[0] or 0.0
+                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                        transaction_count = c.fetchone()[0]
+                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+                        c.execute('''
+                            SELECT s.name, s.name_fa
+                            FROM user_seeds us
+                            JOIN seeds s ON us.seed_id = s.seed_id
+                            WHERE us.user_id = %s
+                        ''', (user_id,))
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
+            except psycopg2.Error as e:
+                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["db_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            await query.message.reply_text(
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
+            )
+            return ConversationHandler.END
+        else:
+            # Handle unrecognized back callback
+            logger.warning(f"Unhandled back callback for user {user_id}: {query.data}")
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in handle_back for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
 
 async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle seed selection for purchase."""
@@ -2889,7 +2960,7 @@ def main():
             CommandHandler("start", start),
             CallbackQueryHandler(
                 handle_menu_callback,
-                pattern=r"^(buy_seed|wallet|referral|language|support|back_to_menu|withdraw|history|plant_seed|harvest_seed)$"
+                pattern=r"^(buy_seed|wallet|referral|language|support|withdraw|history|plant_seed|harvest_seed)$"
             ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
             CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"),
@@ -2898,53 +2969,59 @@ def main():
             CallbackQueryHandler(handle_harvest_seed, pattern=r"^harvest_\d+$"),
             CallbackQueryHandler(handle_admin_action, pattern=r"^(approve|reject)_\d+$"),
             CallbackQueryHandler(handle_balance_purchase, pattern=r"^confirm_balance_purchase$"),
+            CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
         ],
         states={
             SELECT_SEED: [
                 CallbackQueryHandler(
                     handle_seed_selection,
-                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase|wallet)$"
+                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"
                 ),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deposit_amount),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
             ],
             DEPOSIT_NETWORK: [
                 CallbackQueryHandler(
                     handle_deposit_network,
-                    pattern=r"^(network_.*|wallet)$"
+                    pattern=r"^network_.*$"
                 ),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
             ],
             DEPOSIT_TXID: [
                 MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
             ],
             WITHDRAW_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_amount),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
             ],
             WITHDRAW_ADDRESS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_address),
-                CallbackQueryHandler(handle_menu_callback, pattern=r"^wallet$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
             ],
             PLANT_SEED: [
                 CallbackQueryHandler(
                     handle_plant_seed,
-                    pattern=r"^(plant_\d+|wallet)$"
+                    pattern=r"^plant_\d+$"
                 ),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
             ],
             HARVEST_SEED: [
                 CallbackQueryHandler(
                     handle_harvest_seed,
-                    pattern=r"^(harvest_\d+|wallet)$"
+                    pattern=r"^harvest_\d+$"
                 ),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
             ],
             CONFIRM_BALANCE_PURCHASE: [
                 CallbackQueryHandler(
                     handle_balance_purchase,
-                    pattern=r"^(confirm_balance_purchase|wallet)$"
+                    pattern=r"^confirm_balance_purchase$"
                 ),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
             ],
         },
         fallbacks=[
