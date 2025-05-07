@@ -1299,12 +1299,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 def get_seed_selection_menu(lang):
-    """Generate seed selection keyboard."""
+    """🌱 Generate seed selection keyboard with emojis."""
     buttons = [
-        [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"], callback_data=f"seed_{idx}")]
+        [InlineKeyboardButton(f"{seed['emoji']} {seed['name_fa' if lang == 'fa' else 'name']}", callback_data=f"seed_{idx}")]
         for idx, seed in enumerate(SEEDS)
     ]
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
 
 async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
