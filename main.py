@@ -586,23 +586,30 @@ def init_db():
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # اضافه کردن ستون username و created_at به جدول users
+                # اضافه کردن ستون‌های username و created_at به جدول users
+                logger.info("Adding username and created_at columns to users table")
                 c.execute('''
                     ALTER TABLE users
                     ADD COLUMN IF NOT EXISTS username TEXT,
                     ADD COLUMN IF NOT EXISTS created_at TEXT
                 ''')
-                # Users table
+                logger.info("Successfully added username and created_at columns to users table")
+
+                # تعریف جدول users با ساختار درست
+                logger.info("Creating users table if not exists")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS users (
                         user_id BIGINT PRIMARY KEY,
                         language TEXT DEFAULT 'en',
-                        balance REAL DEFAULT 0.0
+                        balance REAL DEFAULT 0.0,
                         username TEXT,
-                        created_at TEXT  
+                        created_at TEXT
                     )
                 ''')
-                # Seeds table
+                logger.info("Users table created or already exists")
+
+                # تعریف جدول seeds
+                logger.info("Creating seeds table if not exists")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS seeds (
                         seed_id SERIAL PRIMARY KEY,
@@ -612,7 +619,10 @@ def init_db():
                         daily_profit_rate REAL NOT NULL
                     )
                 ''')
-                # User seeds table
+                logger.info("Seeds table created or already exists")
+
+                # تعریف جدول user_seeds
+                logger.info("Creating user_seeds table if not exists")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS user_seeds (
                         id SERIAL PRIMARY KEY,
@@ -625,7 +635,10 @@ def init_db():
                         FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
                     )
                 ''')
-                # Transactions table
+                logger.info("User_seeds table created or already exists")
+
+                # تعریف جدول transactions
+                logger.info("Creating transactions table if not exists")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS transactions (
                         id SERIAL PRIMARY KEY,
@@ -642,7 +655,10 @@ def init_db():
                         FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
                     )
                 ''')
-                # Referrals table
+                logger.info("Transactions table created or already exists")
+
+                # تعریف جدول referrals
+                logger.info("Creating referrals table if not exists")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS referrals (
                         id SERIAL PRIMARY KEY,
@@ -653,7 +669,10 @@ def init_db():
                         FOREIGN KEY (referred_id) REFERENCES users (user_id)
                     )
                 ''')
-                # Referral profits table
+                logger.info("Referrals table created or already exists")
+
+                # تعریف جدول referral_profits
+                logger.info("Creating referral_profits table if not exists")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS referral_profits (
                         id SERIAL PRIMARY KEY,
@@ -668,7 +687,10 @@ def init_db():
                         FOREIGN KEY (transaction_id) REFERENCES transactions (id)
                     )
                 ''')
-                # Profits table
+                logger.info("Referral_profits table created or already exists")
+
+                # تعریف جدول profits
+                logger.info("Creating profits table if not exists")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS profits (
                         id SERIAL PRIMARY KEY,
@@ -681,36 +703,32 @@ def init_db():
                         FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
                     )
                 ''')
-                # Populate seeds table if empty
+                logger.info("Profits table created or already exists")
+
+                # پر کردن جدول seeds اگر خالی باشد
+                logger.info("Checking if seeds table is empty")
                 c.execute('SELECT COUNT(*) FROM seeds')
-                if c.fetchone()[0] == 0:
+                seed_count = c.fetchone()[0]
+                if seed_count == 0:
+                    logger.info("Populating seeds table")
                     for seed in SEEDS:
                         c.execute('''
                             INSERT INTO seeds (name, name_fa, price, daily_profit_rate)
                             VALUES (%s, %s, %s, %s)
                         ''', (seed["name"], seed["name_fa"], seed["price"], seed["daily_profit_rate"]))
-                # Check if seeds table is populated
-                c.execute('SELECT COUNT(*) FROM seeds')
-                seed_count = c.fetchone()[0]
-                if seed_count == 0:
-                    logger.error("Seeds table is empty after initialization")
-                    # Optionally notify admin
-                    try:
-                        bot = telegram.Bot(token=os.getenv("BOT_TOKEN"))
-                        bot.send_message(
-                            chat_id=DEFAULT_ADMIN_ID,
-                            text="⚠️ *Error*: Seeds table is empty after database initialization. Please check the database.",
-                            parse_mode="Markdown"
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to notify admin about empty seeds table: {e}")
-                # Check if seed_id column exists in transactions table
+                    logger.info("Successfully populated seeds table")
+                else:
+                    logger.info(f"Seeds table already contains {seed_count} records")
+
+                # چک کردن وجود ستون seed_id در جدول transactions
+                logger.info("Checking for seed_id column in transactions table")
                 c.execute("""
                     SELECT column_name 
                     FROM information_schema.columns 
                     WHERE table_name = 'transactions' AND column_name = 'seed_id'
                 """)
                 if not c.fetchone():
+                    logger.info("Adding seed_id column to transactions table")
                     c.execute('''
                         ALTER TABLE transactions
                         ADD COLUMN seed_id INTEGER
@@ -720,11 +738,39 @@ def init_db():
                         ADD CONSTRAINT transactions_seed_id_fkey
                         FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
                     ''')
-                    logger.info("Added seed_id column and foreign key to transactions table")
+                    logger.info("Successfully added seed_id column and foreign key to transactions table")
+
                 conn.commit()
                 logger.info("Database initialized successfully")
     except Exception as e:
-        logger.error(f"Error initializing database: {e}")
+        logger.error(f"Error initializing database: {e}", exc_info=True)
+        # ارسال پیام به ادمین در صورت خطا
+        try:
+            bot = telegram.Bot(token=os.getenv("BOT_TOKEN"))
+            bot.send_message(
+                chat_id=DEFAULT_ADMIN_ID,
+                text=f"⚠️ *Error*: Failed to initialize database: {str(e)}",
+                parse_mode="Markdown"
+            )
+        except Exception as admin_e:
+            logger.error(f"Failed to notify admin about database initialization error: {admin_e}")
+        raise
+
+def fix_users_table():
+    """Add username and created_at columns to users table if they don't exist."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                logger.info("Checking and adding username and created_at columns to users table")
+                c.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS username TEXT,
+                    ADD COLUMN IF NOT EXISTS created_at TEXT
+                ''')
+                conn.commit()
+                logger.info("Successfully added username and created_at columns to users table")
+    except Exception as e:
+        logger.error(f"Error fixing users table: {e}", exc_info=True)
         raise
 
 # Database helper functions
@@ -3121,6 +3167,11 @@ def main():
         logger.error("BOT_TOKEN not found in environment variables")
         exit(1)
 
+    # Initialize database and fix users table
+    init_db()
+    fix_users_table()
+    logger.info("Database initialization and users table fix completed")
+
     app = ApplicationBuilder().token(token).build()
 
     # Run fix_database for user 5664533861 at startup
@@ -3141,7 +3192,7 @@ def main():
             CallbackQueryHandler(handle_harvest_seed, pattern=r"^harvest_\d+$"),
             CallbackQueryHandler(handle_admin_action, pattern=r"^(approve|reject)_\d+$"),
             CallbackQueryHandler(handle_balance_purchase, pattern=r"^confirm_balance_purchase$"),
-            CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
+            CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
         ],
         states={
             SELECT_SEED: [
@@ -3149,51 +3200,51 @@ def main():
                     handle_seed_selection,
                     pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"
                 ),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             DEPOSIT_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_deposit_amount),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             DEPOSIT_NETWORK: [
                 CallbackQueryHandler(
                     handle_deposit_network,
                     pattern=r"^network_.*$"
                 ),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             DEPOSIT_TXID: [
                 MessageHandler(filters.TEXT | filters.PHOTO, handle_deposit_txid),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             WITHDRAW_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_amount),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             WITHDRAW_ADDRESS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_address),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Updated to handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             PLANT_SEED: [
                 CallbackQueryHandler(
                     handle_plant_seed,
                     pattern=r"^plant_\d+$"
                 ),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             HARVEST_SEED: [
                 CallbackQueryHandler(
                     handle_harvest_seed,
                     pattern=r"^harvest_\d+$"
                 ),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             CONFIRM_BALANCE_PURCHASE: [
                 CallbackQueryHandler(
                     handle_balance_purchase,
                     pattern=r"^confirm_balance_purchase$"
                 ),
-                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),  # Added handle_back
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
         },
         fallbacks=[
