@@ -1121,29 +1121,21 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
 
 # Menu generation
 def get_main_menu(lang):
-    """🌾 Generate **main menu** keyboard with enhanced visuals."""
+    """🌾 Generate main menu keyboard with enhanced visuals."""
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🌱 **خرید بذر**" if lang == "fa" else "🌱 **Buy Seed**", callback_data="buy_seed"),
-            InlineKeyboardButton("🌾 **مزرعه من**" if lang == "fa" else "🌾 **My Farm**", callback_data="wallet")
+            InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed"),
+            InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")
         ],
         [
-            InlineKeyboardButton("🤝 **دعوت کارگر**" if lang == "fa" else "🤝 **Invite Workers**", callback_data="referral"),
-            InlineKeyboardButton("🌐 **زبان**" if lang == "fa" else "🌐 **Language**", callback_data="language")
+            InlineKeyboardButton("🤝 دعوت کارگر" if lang == "fa" else "🤝 Invite Workers", callback_data="referral"),
+            InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")
         ],
         [
-            InlineKeyboardButton("📩 **پشتیبانی**" if lang == "fa" else "📩 **Support**", callback_data="support")
+            InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")
         ]
     ])
 
-def get_seed_selection_menu(lang):
-    """🌱 Generate seed selection keyboard with emojis."""
-    buttons = [
-        [InlineKeyboardButton(f"{seed['emoji']} {seed['name_fa' if lang == 'fa' else 'name']}", callback_data=f"seed_{idx}")]
-        for idx, seed in enumerate(SEEDS)
-    ]
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")])
-    return InlineKeyboardMarkup(buttons)
 
 def get_wallet_menu(lang, balance, has_seeds):
     """Generate wallet menu keyboard."""
@@ -1732,19 +1724,27 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         if query.data.startswith("seed_"):
             seed_idx = int(query.data.split("_")[1])
+            if seed_idx < 0 or seed_idx >= len(SEEDS):
+                logger.warning(f"Invalid seed index {seed_idx} for user {user_id}")
+                await query.message.reply_text(
+                    messages[lang]["error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
             seed = SEEDS[seed_idx]
-            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 2)
-            weekly_profit = round(daily_profit * 7, 2)
-            monthly_profit = round(daily_profit * 30, 2)
-            total_monthly = round(seed["price"] + monthly_profit, 2)
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
+            weekly_profit = round(daily_profit * 7, 3)
+            monthly_profit = round(daily_profit * 30, 3)
+            total_monthly = round(seed["price"] + monthly_profit, 3)
             context.user_data["seed_idx"] = seed_idx
             context.user_data["seed_price"] = seed["price"]
             buttons = [
                 [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_seed_purchase")]
             ]
             if balance >= seed["price"]:
-                buttons.append([InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
-            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
+                buttons.insert(0, [InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")])
             await query.message.reply_text(
                 messages[lang]["seed_info"](
                     seed["name_fa" if lang == "fa" else "name"],
@@ -1752,7 +1752,8 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     daily_profit,
                     weekly_profit,
                     monthly_profit,
-                    total_monthly
+                    total_monthly,
+                    seed["emoji"]  # اضافه کردن ایموجی
                 ),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(buttons)
@@ -1762,17 +1763,18 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             seed_idx = context.user_data.get("seed_idx")
             seed_price = context.user_data.get("seed_price")
             if seed_idx is None or seed_price is None:
+                logger.warning(f"Missing seed_idx or seed_price for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
-                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+                    reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
             await query.message.reply_text(
                 messages[lang]["ask_amount"].format(seed_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")]
                 ])
             )
             return DEPOSIT_AMOUNT
@@ -1780,29 +1782,42 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             seed_idx = context.user_data.get("seed_idx")
             seed_price = context.user_data.get("seed_price")
             if seed_idx is None or seed_price is None:
+                logger.warning(f"Missing seed_idx or seed_price for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
-                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+                    reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
             seed = SEEDS[seed_idx]
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
+            weekly_profit = round(daily_profit * 7, 3)
+            monthly_profit = round(daily_profit * 30, 3)
+            total_monthly = round(seed["price"] + monthly_profit, 3)
             await query.message.reply_text(
                 messages[lang]["seed_info"](
                     seed["name_fa" if lang == "fa" else "name"],
                     seed["price"],
-                    round(seed["price"] * seed["daily_profit_rate"], 2),
-                    round(seed["price"] * seed["daily_profit_rate"] * 7, 2),
-                    round(seed["price"] * seed["daily_profit_rate"] * 30, 2),
-                    round(seed["price"] + seed["price"] * seed["daily_profit_rate"] * 30, 2)
+                    daily_profit,
+                    weekly_profit,
+                    monthly_profit,
+                    total_monthly,
+                    seed["emoji"]  # اضافه کردن ایموجی
                 ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_balance_purchase")],
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back")]
                 ])
             )
             return CONFIRM_BALANCE_PURCHASE
+        elif query.data == "back":
+            await query.message.reply_text(
+                messages[lang]["select_seed"],
+                parse_mode="Markdown",
+                reply_markup=get_seed_selection_menu(lang)
+            )
+            return SELECT_SEED
         elif query.data == "wallet":
             context.user_data.clear()
             try:
@@ -1829,6 +1844,11 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
+                await context.bot.send_message(
+                    chat_id=DEFAULT_ADMIN_ID,
+                    text=f"⚠️ *Database Error in handle_seed_selection for user {user_id}*: {str(e)}",
+                    parse_mode="Markdown"
+                )
                 return ConversationHandler.END
             await query.message.reply_text(
                 messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
@@ -1837,10 +1857,11 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return ConversationHandler.END
         else:
+            logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+                reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
     except Exception as e:
@@ -1848,7 +1869,12 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
-            reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+            reply_markup=get_main_menu(lang)
+        )
+        await context.bot.send_message(
+            chat_id=DEFAULT_ADMIN_ID,
+            text=f"⚠️ *Error in handle_seed_selection for user {user_id}*: {str(e)}",
+            parse_mode="Markdown"
         )
         context.user_data.clear()
         return ConversationHandler.END
