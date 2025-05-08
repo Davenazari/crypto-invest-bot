@@ -33,12 +33,12 @@ langs = {"فارسی": "fa", "English": "en"}
 
 # 🌱 **لیست بذرهای مزرعه** 🌾
 SEEDS = [
-    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.02222, "emoji": "🍅"},
-    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.02778, "emoji": "🥒"},
-    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.03, "emoji": "🍊"},
-    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.02778, "emoji": "🍎"},
-    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.02917, "emoji": "🍌"},
-    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.02970, "emoji": "🥭"},
+    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.05556, "emoji": "🍅"},
+    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.05778, "emoji": "🥒"},
+    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.05, "emoji": "🍊"},
+    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.04306, "emoji": "🍎"},
+    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.04688, "emoji": "🍌"},
+    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.04545, "emoji": "🥭"},
 ]
 
 # Localized messages
@@ -63,7 +63,6 @@ messages = {
             f"📆 **سود روزانه**: `{daily_profit}` تتر\n"
             f"📅 **سود هفتگی**: `{weekly_profit}` تتر\n"
             f"🗓️ **سود ماهانه**: `{monthly_profit}` تتر\n"
-            f"💸 **مجموع (اصل + سود)**: `{total_monthly}` تتر\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"🌱 **آماده خرید این بذر هستید؟**"
         ),
@@ -332,7 +331,6 @@ messages = {
             f"📆 **Daily Profit**: `{daily_profit}` USDT\n"
             f"📅 **Weekly Profit**: `{weekly_profit}` USDT\n"
             f"🗓️ **Monthly Profit**: `{monthly_profit}` USDT\n"
-            f"💸 **Total (Principal + Profit)**: `{total_monthly}` USDT\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"🌱 **Ready to buy this seed?**"
         ),
