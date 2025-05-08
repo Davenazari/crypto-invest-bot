@@ -146,6 +146,11 @@ messages = {
             "لطفاً آدرس کیف پول USDT خودتون رو برای برداشت وارد کنید:\n"
             "📌 آدرس رو با دقت وارد کنید."
         ),
+        "choose_network_withdraw": (
+            "📲 *انتخاب شبکه برای برداشت*\n"
+            "لطفاً شبکه مورد نظر برای برداشت رو انتخاب کنید:\n"
+            "👇 یکی از گزینه‌های زیر رو انتخاب کنید 👇"
+        ),
         "withdraw_success": (
             "🎉 *درخواست برداشت ثبت شد!*\n"
             "درخواست شما با موفقیت ثبت شد.\n"
@@ -413,6 +418,11 @@ messages = {
             "📋 *Wallet Address*\n"
             "Please enter your USDT wallet address for withdrawal:\n"
             "📌 Enter the address carefully."
+        ),
+        "choose_network_withdraw": (
+            "📲 *Select Network for Withdrawal*\n"
+            "Please choose the network for your withdrawal:\n"
+            "👇 Choose one of the options below 👇"
         ),
         "withdraw_success": (
             "🎉 *Withdrawal Request Recorded!*\n"
@@ -2690,13 +2700,15 @@ async def handle_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_T
             return WITHDRAW_AMOUNT
         context.user_data["withdraw_amount"] = amount
         await update.message.reply_text(
-            messages[lang]["ask_withdraw_address"],
+            messages[lang]["choose_network_withdraw"],
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("TRC20", callback_data="withdraw_network_TRC20")],
+                [InlineKeyboardButton("BEP20", callback_data="withdraw_network_BEP20")],
                 [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
             ])
         )
-        return WITHDRAW_ADDRESS
+        return WITHDRAW_NETWORK
     except ValueError:
         await update.message.reply_text(
             messages[lang]["insufficient_balance"],
@@ -2714,16 +2726,98 @@ async def handle_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data.clear()
         return ConversationHandler.END
 
+async def handle_withdraw_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle withdrawal network selection."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"User {user_id} triggered withdraw network callback: {query.data}")
+
+    try:
+        if query.data.startswith("withdraw_network_"):
+            network = query.data.split("_")[2]
+            if network not in wallet_addresses:
+                await query.message.reply_text(
+                    messages[lang]["error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            context.user_data["withdraw_network"] = network
+            await query.message.reply_text(
+                messages[lang]["ask_withdraw_address"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
+                ])
+            )
+            return WITHDRAW_ADDRESS
+        elif query.data == "wallet":
+            balance = user[1] if user else 0
+            try:
+                with psycopg2.connect(DATABASE_URL) as conn:
+                    with conn.cursor() as c:
+                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                        seed_profit = c.fetchone()[0] or 0.0
+                        c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                        referral_profit = c.fetchone()[0] or 0.0
+                        total_profit = seed_profit + referral_profit
+                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                        transaction_count = c.fetchone()[0]
+                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+                        c.execute('''
+                            SELECT s.name, s.name_fa
+                            FROM user_seeds us
+                            JOIN seeds s ON us.seed_id = s.seed_id
+                            WHERE us.user_id = %s
+                        ''', (user_id,))
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
+            except psycopg2.Error as e:
+                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
+                await query.message.reply_text(
+                    messages[lang]["db_error"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            await query.message.reply_text(
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
+            )
+            return ConversationHandler.END
+        else:
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang)
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in handle_withdraw_network for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END        
+
 async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle withdrawal address input."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
     amount = context.user_data.get("withdraw_amount")
+    network = context.user_data.get("withdraw_network")
     address = update.message.text
     logger.info(f"User {user_id} submitted withdrawal address")
 
-    if not amount:
+    if not all([amount, network, address]):
         await update.message.reply_text(
             messages[lang]["invalid_data"],
             parse_mode="Markdown",
@@ -2735,12 +2829,11 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
     try:
         message_id = update.message.message_id
         transaction_id = insert_transaction(
-            user_id, amount, None, "pending", "withdrawal", message_id, address=address
+            user_id, amount, network, "pending", "withdrawal", message_id, address=address
         )
 
         # Forward to admin
         try:
-            # Create inline buttons for approve and reject
             keyboard = [
                 [
                     InlineKeyboardButton("✅ Approve", callback_data=f"approve_{transaction_id}"),
@@ -2753,6 +2846,7 @@ async def handle_withdraw_address(update: Update, context: ContextTypes.DEFAULT_
                     f"📤 *New Withdrawal Request*\n"
                     f"User ID: `{user_id}`\n"
                     f"Amount: `{amount}` USDT\n"
+                    f"Network: `{network}`\n"
                     f"Address: `{address}`\n"
                     f"Transaction ID: `{transaction_id}`\n"
                     f"──────────────"
@@ -3454,6 +3548,13 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_amount),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
+            WITHDRAW_NETWORK: [
+                CallbackQueryHandler(
+                    handle_withdraw_network,
+                    pattern=r"^withdraw_network_.*$"
+                ),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
             WITHDRAW_ADDRESS: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_address),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
@@ -3504,7 +3605,6 @@ def main():
     app.add_handler(CommandHandler("checkseeds", check_seeds))
     app.add_handler(CommandHandler("test_referral_profit", test_referral_profit))
     app.add_handler(CommandHandler("cancel", cancel))
-    app.add_error_handler(error_handler)
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
     app.add_handler(CommandHandler("debug_balance", debug_balance))
 
