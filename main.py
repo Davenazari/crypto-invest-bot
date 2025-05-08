@@ -3401,7 +3401,6 @@ def update_transaction_status(transaction_id, status):
         raise
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancel the current operation."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
@@ -3409,7 +3408,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     context.user_data.clear()
     await update.message.reply_text(
-        messages[lang]["cancel"],
+        messages[lang]["cancel"].replace(
+            "برای بازگشت به منوی مزرعه، /start رو وارد کنید.",
+            "به منوی اصلی مزرعه برگشتید. گزینه مورد نظر را انتخاب کنید:"
+        ) if lang == "fa" else
+        messages[lang]["cancel"].replace(
+            "To return to the farm menu, use /start.",
+            "Returned to the main farm menu. Choose an option:"
+        ),
         parse_mode="Markdown",
         reply_markup=get_main_menu(lang)
     )
@@ -3586,6 +3592,7 @@ def main():
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
+            CommandHandler("start", cancel),  # اضافه کردن هندلر برای /start
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
         ],
         per_message=False
