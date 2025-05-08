@@ -1519,20 +1519,28 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
 
 # Menu generation
 def get_main_menu(lang, user_id=None):
-    """Generate the main menu with buttons."""
+    """🌾 Generate main menu keyboard with enhanced visuals."""
     keyboard = [
-        [InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed")],
-        [InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")],
-        [InlineKeyboardButton("🤝 کارگرهای مزرعه" if lang == "fa" else "🤝 Farm Workers", callback_data="referral")],
-        [InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")],
-        [InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")],
-        [InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")]
+        [
+            InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed"),
+            InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")
+        ],
+        [
+            InlineKeyboardButton("🤝 دعوت کارگر" if lang == "fa" else "🤝 Invite Workers", callback_data="referral"),
+            InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")
+        ],
+        [
+            InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")
+        ]
     ]
     # اضافه کردن دکمه مدیریت کاربران فقط برای ادمین
     if user_id == DEFAULT_ADMIN_ID:
-        keyboard.append([InlineKeyboardButton("👤 مدیریت کاربران" if lang == "fa" else "👤 Manage Users", callback_data="manage_users")])
+        keyboard.append(
+            [
+                InlineKeyboardButton("👤 مدیریت کاربران" if lang == "fa" else "👤 Manage Users", callback_data="manage_users")
+            ]
+        )
     return InlineKeyboardMarkup(keyboard)
-
 
 def get_wallet_menu(lang, balance, has_seeds):
     """Generate wallet menu keyboard."""
