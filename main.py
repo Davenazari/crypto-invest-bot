@@ -4109,14 +4109,17 @@ def get_users_paginated(page=1, page_size=5):
 async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle view users menu with pagination."""
     query = update.callback_query
+    logger.info(f"Received callback query: {query.data}")
     await query.answer()
     user_id = query.from_user.id
+    logger.info(f"Checking admin access for user {user_id}")
     if user_id != DEFAULT_ADMIN_ID:
+        logger.warning(f"Unauthorized access attempt by user {user_id}")
         await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
         return ConversationHandler.END
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"Admin {user_id} opened view users menu")
+    logger.info(f"Admin {user_id} opened view users menu with lang {lang}")
 
     # گرفتن شماره صفحه از callback_data یا user_data
     if query.data.startswith("page_"):
@@ -4124,12 +4127,15 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["users_page"] = page
     else:
         page = int(context.user_data.get("users_page", 1))
+    logger.info(f"Fetching users for page {page}")
 
     try:
         users, total_users = get_users_paginated(page=page)
+        logger.info(f"Retrieved {len(users)} users, total users: {total_users}")
         total_pages = (total_users + 4) // 5  # محاسبه تعداد صفحات (هر صفحه ۵ کاربر)
 
         if not users:
+            logger.info("No users found")
             await query.message.reply_text(
                 "📋 *هیچ کاربری یافت نشد!*" if lang == "fa" else "📋 *No users found!*",
                 parse_mode="Markdown",
@@ -4140,6 +4146,7 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return MANAGE_USERS
 
         # ساخت دکمه‌های شیشه‌ای برای کاربران
+        logger.info("Building user buttons")
         keyboard = [
             [InlineKeyboardButton(f"@{user[1] or 'No Username'} (ID: {user[0]})", callback_data=f"view_user_{user[0]}")]
             for user in users
@@ -4154,6 +4161,7 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if navigation_buttons:
             keyboard.append(navigation_buttons)
         keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+        logger.info(f"Keyboard built with {len(keyboard)} rows")
 
         await query.message.reply_text(
             f"📋 *لیست کاربران (صفحه {page} از {total_pages})*\n"
@@ -4163,9 +4171,10 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        logger.info(f"Sent user list for page {page} to admin {user_id}")
         return VIEW_USERS
     except Exception as e:
-        logger.error(f"Error in view_users for admin {user_id}: {e}")
+        logger.error(f"Error in view_users for admin {user_id}: {str(e)}", exc_info=True)
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
@@ -4458,7 +4467,7 @@ def main():
             CommandHandler("start", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
         ],
-        per_message=False
+        per_message=True
     )
 
     # Add handlers to the application
