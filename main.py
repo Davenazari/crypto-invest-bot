@@ -2094,13 +2094,21 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return CONFIRM_BALANCE_PURCHASE
         else:
-            logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
+            # نمایش لیست بذرها با نام، قیمت و ایموجی
+            buttons = [
+                [InlineKeyboardButton(
+                    f"{seed['name_fa' if lang == 'fa' else 'name']}: {seed['price']} USDT {seed['emoji']}",
+                    callback_data=f"seed_{i}"
+                )]
+                for i, seed in enumerate(SEEDS)
+            ]
+            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
             await query.message.reply_text(
-                messages[lang]["error"],
+                messages[lang]["select_seed"],
                 parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
+                reply_markup=InlineKeyboardMarkup(buttons)
             )
-            return ConversationHandler.END
+            return SELECT_SEED
     except Exception as e:
         logger.error(f"Error in handle_seed_selection for user {user_id}: {e}")
         await query.message.reply_text(
