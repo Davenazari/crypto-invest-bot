@@ -3676,6 +3676,7 @@ async def handle_manage_users_callback(update: Update, context: ContextTypes.DEF
     logger.info(f"Admin {user_id} selected manage users action: {query.data}")
 
     if query.data == "ban_user":
+        context.user_data["manage_action"] = "ban_user"
         await query.message.reply_text(
             messages[lang]["ask_user_id"],
             parse_mode="Markdown",
@@ -3685,6 +3686,7 @@ async def handle_manage_users_callback(update: Update, context: ContextTypes.DEF
         )
         return ENTER_USER_ID
     elif query.data == "manage_seeds":
+        context.user_data["manage_action"] = "manage_seeds"
         await query.message.reply_text(
             messages[lang]["ask_seed_action"],
             parse_mode="Markdown",
@@ -3696,6 +3698,7 @@ async def handle_manage_users_callback(update: Update, context: ContextTypes.DEF
         )
         return SEED_ACTION
     elif query.data == "manage_balance":
+        context.user_data["manage_action"] = "manage_balance"
         await query.message.reply_text(
             messages[lang]["ask_balance_action"],
             parse_mode="Markdown",
@@ -3717,58 +3720,6 @@ async def handle_manage_users_callback(update: Update, context: ContextTypes.DEF
         )
         return ConversationHandler.END
 
-async def handle_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle user ID input for ban."""
-    user_id = update.effective_user.id
-    if user_id != DEFAULT_ADMIN_ID:
-        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
-        return ConversationHandler.END
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    input_text = update.message.text.strip()
-    logger.info(f"Admin {user_id} entered user ID: {input_text}")
-
-    try:
-        target_user_id = int(input_text)
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('SELECT user_id FROM users WHERE user_id = %s AND is_banned = FALSE', (target_user_id,))
-                if not c.fetchone():
-                    await update.message.reply_text(
-                        messages[lang]["invalid_user_id"],
-                        parse_mode="Markdown",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-                        ])
-                    )
-                    return ENTER_USER_ID
-        context.user_data["target_user_id"] = target_user_id
-        await update.message.reply_text(
-            messages[lang]["confirm_ban_user"](target_user_id),
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_ban")],
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-            ])
-        )
-        return BAN_USER
-    except ValueError:
-        await update.message.reply_text(
-            messages[lang]["invalid_user_id"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-            ])
-        )
-        return ENTER_USER_ID
-    except Exception as e:
-        logger.error(f"Error in handle_user_id for admin {user_id}: {e}")
-        await update.message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang, user_id)
-        )
-        return ConversationHandler.END
 
 async def handle_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle user ban confirmation."""
@@ -3839,6 +3790,7 @@ async def handle_seed_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if query.data in ["add_seed", "remove_seed"]:
         context.user_data["seed_action"] = query.data
+        context.user_data["manage_action"] = "manage_seeds"  # اضافه کردن کنتکست
         await query.message.reply_text(
             messages[lang]["ask_user_id"],
             parse_mode="Markdown",
@@ -3858,83 +3810,6 @@ async def handle_seed_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return ConversationHandler.END
 
-async def handle_seed_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle user ID input for seed management."""
-    user_id = update.effective_user.id
-    if user_id != DEFAULT_ADMIN_ID:
-        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
-        return ConversationHandler.END
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    input_text = update.message.text.strip()
-    logger.info(f"Admin {user_id} entered user ID for seed management: {input_text}")
-
-    try:
-        target_user_id = int(input_text)
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('SELECT user_id FROM users WHERE user_id = %s AND is_banned = FALSE', (target_user_id,))
-                if not c.fetchone():
-                    await update.message.reply_text(
-                        messages[lang]["invalid_user_id"],
-                        parse_mode="Markdown",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-                        ])
-                    )
-                    return ENTER_USER_ID
-        context.user_data["target_user_id"] = target_user_id
-        if context.user_data.get("seed_action") == "add_seed":
-            keyboard = [
-                [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"] + f" {seed['emoji']}", callback_data=f"add_seed_{idx}")]
-                for idx, seed in enumerate(SEEDS)
-            ]
-            keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
-            await update.message.reply_text(
-                messages[lang]["select_seed_to_add"],
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            return SELECT_SEED_ADD
-        else:  # remove_seed
-            user_seeds = get_user_seeds(target_user_id)
-            if not user_seeds:
-                await update.message.reply_text(
-                    messages[lang]["no_seeds_to_remove"],
-                    parse_mode="Markdown",
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-                    ])
-                )
-                return MANAGE_USERS
-            keyboard = [
-                [InlineKeyboardButton(f"{seed[1 if lang == 'fa' else 0]} (ID: {seed[6]})", callback_data=f"remove_seed_{seed[6]}")]
-                for seed in user_seeds
-            ]
-            keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
-            await update.message.reply_text(
-                messages[lang]["select_seed_to_remove"],
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-            return SELECT_SEED_REMOVE
-    except ValueError:
-        await update.message.reply_text(
-            messages[lang]["invalid_user_id"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-            ])
-        )
-        return ENTER_USER_ID
-    except Exception as e:
-        logger.error(f"Error in handle_seed_user_id for admin {user_id}: {e}")
-        await update.message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang, user_id)
-        )
-        return ConversationHandler.END
 
 async def handle_seed_selection_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle seed selection for add/remove."""
@@ -4026,6 +3901,7 @@ async def handle_balance_action(update: Update, context: ContextTypes.DEFAULT_TY
 
     if query.data in ["add_balance", "subtract_balance"]:
         context.user_data["balance_action"] = query.data
+        context.user_data["manage_action"] = "manage_balance"  # اضافه کردن کنتکست
         await query.message.reply_text(
             messages[lang]["ask_user_id"],
             parse_mode="Markdown",
@@ -4045,57 +3921,6 @@ async def handle_balance_action(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return ConversationHandler.END
 
-async def handle_balance_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle user ID input for balance management."""
-    user_id = update.effective_user.id
-    if user_id != DEFAULT_ADMIN_ID:
-        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
-        return ConversationHandler.END
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    input_text = update.message.text.strip()
-    logger.info(f"Admin {user_id} entered user ID for balance management: {input_text}")
-
-    try:
-        target_user_id = int(input_text)
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                c.execute('SELECT user_id FROM users WHERE user_id = %s AND is_banned = FALSE', (target_user_id,))
-                if not c.fetchone():
-                    await update.message.reply_text(
-                        messages[lang]["invalid_user_id"],
-                        parse_mode="Markdown",
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-                        ])
-                    )
-                    return ENTER_USER_ID
-        context.user_data["target_user_id"] = target_user_id
-        await update.message.reply_text(
-            messages[lang]["ask_balance_amount"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-            ])
-        )
-        return ENTER_BALANCE_AMOUNT
-    except ValueError:
-        await update.message.reply_text(
-            messages[lang]["invalid_user_id"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-            ])
-        )
-        return ENTER_USER_ID
-    except Exception as e:
-        logger.error(f"Error in handle_balance_user_id for admin {user_id}: {e}")
-        await update.message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang, user_id)
-        )
-        return ConversationHandler.END
 
 async def handle_balance_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle balance amount input."""
@@ -4149,6 +3974,114 @@ async def handle_balance_amount(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=get_main_menu(lang, user_id)
         )
         return ConversationHandler.END
+
+async def handle_user_id_common(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user ID input for ban, seed management, or balance management."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    input_text = update.message.text.strip()
+    logger.info(f"Admin {user_id} entered user ID: {input_text}")
+
+    try:
+        target_user_id = int(input_text)
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT user_id FROM users WHERE user_id = %s AND is_banned = FALSE', (target_user_id,))
+                if not c.fetchone():
+                    await update.message.reply_text(
+                        messages[lang]["invalid_user_id"],
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                        ])
+                    )
+                    return ENTER_USER_ID
+        context.user_data["target_user_id"] = target_user_id
+
+        # بررسی کنتکست برای تصمیم‌گیری
+        if context.user_data.get("manage_action") == "ban_user":
+            await update.message.reply_text(
+                messages[lang]["confirm_ban_user"](target_user_id),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_ban")],
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                ])
+            )
+            return BAN_USER
+        elif context.user_data.get("manage_action") == "manage_seeds":
+            seed_action = context.user_data.get("seed_action")
+            if seed_action == "add_seed":
+                keyboard = [
+                    [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"] + f" {seed['emoji']}", callback_data=f"add_seed_{idx}")]
+                    for idx, seed in enumerate(SEEDS)
+                ]
+                keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+                await update.message.reply_text(
+                    messages[lang]["select_seed_to_add"],
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return SELECT_SEED_ADD
+            else:  # remove_seed
+                user_seeds = get_user_seeds(target_user_id)
+                if not user_seeds:
+                    await update.message.reply_text(
+                        messages[lang]["no_seeds_to_remove"],
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                        ])
+                    )
+                    return MANAGE_USERS
+                keyboard = [
+                    [InlineKeyboardButton(f"{seed[1 if lang == 'fa' else 0]} (ID: {seed[6]})", callback_data=f"remove_seed_{seed[6]}")]
+                    for seed in user_seeds
+                ]
+                keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+                await update.message.reply_text(
+                    messages[lang]["select_seed_to_remove"],
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return SELECT_SEED_REMOVE
+        elif context.user_data.get("manage_action") == "manage_balance":
+            await update.message.reply_text(
+                messages[lang]["ask_balance_amount"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                ])
+            )
+            return ENTER_BALANCE_AMOUNT
+        else:
+            await update.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang, user_id)
+            )
+            return ConversationHandler.END
+    except ValueError:
+        await update.message.reply_text(
+            messages[lang]["invalid_user_id"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_USER_ID
+    except Exception as e:
+        logger.error(f"Error in handle_user_id_common for admin {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END        
 
 def main():
     """Run the bot."""
@@ -4260,9 +4193,7 @@ def main():
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             ENTER_USER_ID: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_seed_user_id),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_balance_user_id),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_common),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
