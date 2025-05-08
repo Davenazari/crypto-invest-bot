@@ -626,6 +626,15 @@ def init_db():
                 ''')
                 logger.info("Successfully added username and created_at columns to users table")
 
+                # اضافه کردن ستون‌های bonus و fmx_balance به جدول users
+                logger.info("Adding bonus and fmx_balance columns to users table")
+                c.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS bonus REAL DEFAULT 0.0,
+                    ADD COLUMN IF NOT EXISTS fmx_balance REAL DEFAULT 0.0
+                ''')
+                logger.info("Successfully added bonus and fmx_balance columns to users table")
+
                 # تعریف جدول users با ساختار درست
                 logger.info("Creating users table if not exists")
                 c.execute('''
@@ -635,6 +644,8 @@ def init_db():
                         balance REAL DEFAULT 0.0,
                         username TEXT,
                         created_at TEXT
+                        bonus REAL DEFAULT 0.0,
+                        fmx_balance REAL DEFAULT 0.0
                     )
                 ''')
                 logger.info("Users table created or already exists")
