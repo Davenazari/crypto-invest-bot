@@ -1756,14 +1756,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return HARVEST_SEED
         elif query.data == "withdraw":
-            context.user_data.clear()
-            if balance < 15:
-                await query.message.reply_text(
-                    messages[lang]["insufficient_balance"],
-                    parse_mode="Markdown",
-                    reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
-                )
-                return ConversationHandler.END
+            balance = user[1] if user else 0
             await query.message.reply_text(
                 messages[lang]["ask_withdraw_amount"],
                 parse_mode="Markdown",
@@ -2692,9 +2685,18 @@ async def handle_withdraw_amount(update: Update, context: ContextTypes.DEFAULT_T
 
     try:
         amount = float(update.message.text)
-        if amount < 15 or amount > balance:
+        if amount < 15:
             await update.message.reply_text(
-                messages[lang]["insufficient_balance"],
+                "⚠️ *خطا*: مقدار واردشده کمتر از حداقل مقدار برداشت (15 تتر) است!\nلطفاً مقدار معتبر وارد کنید." if lang == "fa" else
+                "⚠️ *Error*: The entered amount is less than the minimum withdrawal (15 USDT)!\nPlease enter a valid amount.",
+                parse_mode="Markdown",
+                reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
+            )
+            return WITHDRAW_AMOUNT
+        if amount > balance:
+            await update.message.reply_text(
+                f"⚠️ *خطا*: موجودی کافی نیست! موجودی شما `{balance}` تتر است.\nلطفاً مقدار کمتر یا برابر با موجودی وارد کنید." if lang == "fa" else
+                f"⚠️ *Error*: Insufficient balance! Your balance is `{balance}` USDT.\nPlease enter an amount less than or equal to your balance.",
                 parse_mode="Markdown",
                 reply_markup=get_wallet_menu(lang, balance, bool(get_user_seeds(user_id)))
             )
