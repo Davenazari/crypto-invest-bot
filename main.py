@@ -33,12 +33,12 @@ langs = {"فارسی": "fa", "English": "en"}
 
 # 🌱 **لیست بذرهای مزرعه** 🌾
 SEEDS = [
-    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.001, "emoji": "🍅"},
-    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.0015, "emoji": "🥒"},
-    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.002, "emoji": "🍊"},
-    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0028, "emoji": "🍎"},
-    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.004, "emoji": "🍌"},
-    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.005, "emoji": "🥭"},
+    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.02222, "emoji": "🍅"},
+    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.02778, "emoji": "🥒"},
+    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.03, "emoji": "🍊"},
+    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.02778, "emoji": "🍎"},
+    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.02917, "emoji": "🍌"},
+    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.02970, "emoji": "🥭"},
 ]
 
 # Localized messages
@@ -597,7 +597,7 @@ if not DATABASE_URL:
 
 # Database initialization
 def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and update seed profit rates."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
@@ -720,8 +720,8 @@ def init_db():
                 ''')
                 logger.info("Profits table created or already exists")
 
-                # پر کردن جدول seeds اگر خالی باشد
-                logger.info("Checking if seeds table is empty")
+                # پر کردن یا به‌روزرسانی جدول seeds
+                logger.info("Checking and updating seeds table")
                 c.execute('SELECT COUNT(*) FROM seeds')
                 seed_count = c.fetchone()[0]
                 if seed_count == 0:
@@ -733,7 +733,14 @@ def init_db():
                         ''', (seed["name"], seed["name_fa"], seed["price"], seed["daily_profit_rate"]))
                     logger.info("Successfully populated seeds table")
                 else:
-                    logger.info(f"Seeds table already contains {seed_count} records")
+                    logger.info("Updating seeds table with new daily_profit_rate")
+                    for seed in SEEDS:
+                        c.execute('''
+                            UPDATE seeds
+                            SET daily_profit_rate = %s
+                            WHERE name = %s
+                        ''', (seed["daily_profit_rate"], seed["name"]))
+                    logger.info("Successfully updated daily_profit_rate in seeds table")
 
                 # چک کردن وجود ستون seed_id در جدول transactions
                 logger.info("Checking for seed_id column in transactions table")
@@ -756,10 +763,9 @@ def init_db():
                     logger.info("Successfully added seed_id column and foreign key to transactions table")
 
                 conn.commit()
-                logger.info("Database initialized successfully")
+                logger.info("Database initialized and seeds updated successfully")
     except Exception as e:
         logger.error(f"Error initializing database: {e}", exc_info=True)
-        # ارسال پیام به ادمین در صورت خطا
         try:
             bot = telegram.Bot(token=os.getenv("BOT_TOKEN"))
             bot.send_message(
