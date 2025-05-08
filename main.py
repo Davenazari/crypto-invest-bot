@@ -319,6 +319,30 @@ messages = {
             "⚠️ *خطا*: هیچ سودی برای برداشت وجود نداره!\n"
             "📌 لطفاً بعد از کاشت و زمان مناسب دوباره تلاش کنید."
         ),
+        "manage_users_menu": "👤 *مدیریت کاربران*\nلطفاً یک گزینه انتخاب کنید:",
+        "ban_user": "🚫 بن/حذف کاربر",
+        "manage_seeds": "🌱 مدیریت بذرها",
+        "manage_balance": "💰 مدیریت بالانس",
+        "ask_user_id": "📋 لطفاً ID کاربر را وارد کنید (فقط عدد):",
+        "invalid_user_id": "⚠️ *خطا*: ID کاربر نامعتبر است یا کاربر وجود ندارد!",
+        "confirm_ban_user": lambda user_id: f"🚫 آیا مطمئن هستید که می‌خواهید کاربر {user_id} را بن کنید؟",
+        "user_banned": lambda user_id: f"✅ کاربر {user_id} با موفقیت بن شد.",
+        "ask_seed_action": "🌱 *مدیریت بذر*\nلطفاً نوع عملیات را انتخاب کنید:",
+        "add_seed": "➕ اضافه کردن بذر",
+        "remove_seed": "➖ حذف بذر",
+        "select_seed_to_add": "🌱 لطفاً بذر مورد نظر برای اضافه کردن را انتخاب کنید:",
+        "select_seed_to_remove": "🌱 لطفاً بذر مورد نظر برای حذف را انتخاب کنید:",
+        "seed_added": lambda seed_name, user_id: f"✅ بذر {seed_name} به کاربر {user_id} اضافه شد.",
+        "seed_removed": lambda seed_name, user_id: f"✅ بذر {seed_name} از کاربر {user_id} حذف شد.",
+        "no_seeds_to_remove": "⚠️ *خطا*: این کاربر هیچ بذری ندارد!",
+        "ask_balance_action": "💰 *مدیریت بالانس*\nلطفاً نوع عملیات را انتخاب کنید:",
+        "add_balance": "➕ افزایش بالانس",
+        "subtract_balance": "➖ کاهش بالانس",
+        "ask_balance_amount": "💰 لطفاً مقدار بالانس (تتر) را وارد کنید (عدد مثبت):",
+        "invalid_balance_amount": "⚠️ *خطا*: مقدار واردشده معتبر نیست! لطفاً عدد مثبتی وارد کنید.",
+        "balance_updated": lambda user_id, amount, action: (
+            f"✅ بالانس کاربر {user_id} با موفقیت {action} شد.\nمقدار: {amount} تتر"
+        ),
     },
     "en": {
         "welcome": (
@@ -596,6 +620,30 @@ messages = {
             "⚠️ *Error*: No profit available to harvest!\n"
             "📌 Please try again after planting and at the appropriate time."
         ),
+        "manage_users_menu": "👤 *Manage Users*\nPlease select an option:",
+        "ban_user": "🚫 Ban/Delete User",
+        "manage_seeds": "🌱 Manage Seeds",
+        "manage_balance": "💰 Manage Balance",
+        "ask_user_id": "📋 Please enter the user ID (numbers only):",
+        "invalid_user_id": "⚠️ *Error*: Invalid user ID or user does not exist!",
+        "confirm_ban_user": lambda user_id: f"🚫 Are you sure you want to ban user {user_id}?",
+        "user_banned": lambda user_id: f"✅ User {user_id} has been banned successfully.",
+        "ask_seed_action": "🌱 *Manage Seeds*\nPlease select the action:",
+        "add_seed": "➕ Add Seed",
+        "remove_seed": "➖ Remove Seed",
+        "select_seed_to_add": "🌱 Please select the seed to add:",
+        "select_seed_to_remove": "🌱 Please select the seed to remove:",
+        "seed_added": lambda seed_name, user_id: f"✅ Seed {seed_name} added to user {user_id}.",
+        "seed_removed": lambda seed_name, user_id: f"✅ Seed {seed_name} removed from user {user_id}.",
+        "no_seeds_to_remove": "⚠️ *Error*: This user has no seeds!",
+        "ask_balance_action": "💰 *Manage Balance*\nPlease select the action:",
+        "add_balance": "➕ Add Balance",
+        "subtract_balance": "➖ Subtract Balance",
+        "ask_balance_amount": "💰 Please enter the balance amount (USDT, positive number):",
+        "invalid_balance_amount": "⚠️ *Error*: Invalid amount entered! Please enter a positive number.",
+        "balance_updated": lambda user_id, amount, action: (
+            f"✅ User {user_id}'s balance has been {action} successfully.\nAmount: {amount} USDT"
+        ),
     }
 }
 
@@ -662,6 +710,14 @@ def init_db():
                     )
                 ''')
                 logger.info("Users table created or already exists")
+
+                # اضافه کردن ستون is_banned
+                logger.info("Adding is_banned column to users table")
+                c.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE
+                ''')
+                logger.info("Successfully added is_banned column to users table")
 
                 # تعریف جدول seeds
                 logger.info("Creating seeds table if not exists")
@@ -828,16 +884,68 @@ def fix_users_table():
         logger.error(f"Error fixing users table: {e}", exc_info=True)
         raise
 
+def ban_user(user_id):
+    """Ban a user by setting is_banned to True."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('UPDATE users SET is_banned = TRUE WHERE user_id = %s', (user_id,))
+                if c.rowcount == 0:
+                    return False
+                conn.commit()
+                logger.info(f"User {user_id} banned successfully")
+                return True
+    except Exception as e:
+        logger.error(f"Error banning user {user_id}: {e}")
+        raise
+
+def add_user_seed_admin(user_id, seed_id):
+    """Add a seed to a user by admin."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                purchase_date = datetime.now(pytz.timezone('Asia/Tehran')).isoformat()
+                c.execute('''
+                    INSERT INTO user_seeds (user_id, seed_id, purchase_date)
+                    VALUES (%s, %s, %s)
+                ''', (user_id, seed_id, purchase_date))
+                conn.commit()
+                logger.info(f"Seed {seed_id} added to user {user_id} by admin")
+    except Exception as e:
+        logger.error(f"Error adding seed {seed_id} to user {user_id}: {e}")
+        raise
+
+def remove_user_seed(user_id, user_seed_id):
+    """Remove a specific seed from a user."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('''
+                    DELETE FROM user_seeds
+                    WHERE user_id = %s AND id = %s
+                ''', (user_id, user_seed_id))
+                if c.rowcount == 0:
+                    return False
+                conn.commit()
+                logger.info(f"Seed {user_seed_id} removed from user {user_id}")
+                return True
+    except Exception as e:
+        logger.error(f"Error removing seed {user_seed_id} from user {user_id}: {e}")
+        raise    
+
 # Database helper functions
 def get_user(user_id):
     """Retrieve user data from database or create a new user."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                c.execute('SELECT language, balance FROM users WHERE user_id = %s', (user_id,))
+                c.execute('SELECT language, balance, is_banned FROM users WHERE user_id = %s', (user_id,))
                 user = c.fetchone()
                 if user:
-                    return user
+                    if user[2]:  # اگر is_banned=True باشه
+                        logger.warning(f"User {user_id} is banned")
+                        return None
+                    return user[:2]  # فقط language و balance رو برگردون
                 # Create new user if not found
                 upsert_user(user_id, language="en")
                 return ("en", 0.0)
@@ -1410,21 +1518,20 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
     return now.date() > last_planted_dt.date()
 
 # Menu generation
-def get_main_menu(lang):
-    """🌾 Generate main menu keyboard with enhanced visuals."""
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed"),
-            InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")
-        ],
-        [
-            InlineKeyboardButton("🤝 دعوت کارگر" if lang == "fa" else "🤝 Invite Workers", callback_data="referral"),
-            InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")
-        ],
-        [
-            InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")
-        ]
-    ])
+def get_main_menu(lang, user_id=None):
+    """Generate the main menu with buttons."""
+    keyboard = [
+        [InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed")],
+        [InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")],
+        [InlineKeyboardButton("🤝 کارگرهای مزرعه" if lang == "fa" else "🤝 Farm Workers", callback_data="referral")],
+        [InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")],
+        [InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")],
+        [InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")]
+    ]
+    # اضافه کردن دکمه مدیریت کاربران فقط برای ادمین
+    if user_id == DEFAULT_ADMIN_ID:
+        keyboard.append([InlineKeyboardButton("👤 مدیریت کاربران" if lang == "fa" else "👤 Manage Users", callback_data="manage_users")])
+    return InlineKeyboardMarkup(keyboard)
 
 
 def get_wallet_menu(lang, balance, has_seeds):
@@ -1603,7 +1710,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             messages[lang]["welcome"],
             parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
+            reply_markup=get_main_menu(lang, update.effective_user.id)
         )
         logger.info(f"Sent welcome message to user {user_id}")
         return ConversationHandler.END
@@ -3520,7 +3627,520 @@ async def debug_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(response)
     except Exception as e:
         logger.error(f"Error debugging balance for user {user_id}: {e}")
-        await update.message.reply_text(f"Error: {str(e)}")        
+        await update.message.reply_text(f"Error: {str(e)}") 
+     
+# Conversation states for manage users
+MANAGE_USERS, ENTER_USER_ID, BAN_USER, SEED_ACTION, SELECT_SEED_ADD, SELECT_SEED_REMOVE, BALANCE_ACTION, ENTER_BALANCE_AMOUNT = range(10, 18)
+
+async def manage_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle manage users menu."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"Admin {user_id} opened manage users menu")
+    await query.message.reply_text(
+        messages[lang]["manage_users_menu"],
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton(messages[lang]["ban_user"], callback_data="ban_user")],
+            [InlineKeyboardButton(messages[lang]["manage_seeds"], callback_data="manage_seeds")],
+            [InlineKeyboardButton(messages[lang]["manage_balance"], callback_data="manage_balance")],
+            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+        ])
+    )
+    return MANAGE_USERS
+
+async def handle_manage_users_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle manage users callback."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"Admin {user_id} selected manage users action: {query.data}")
+
+    if query.data == "ban_user":
+        await query.message.reply_text(
+            messages[lang]["ask_user_id"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_USER_ID
+    elif query.data == "manage_seeds":
+        await query.message.reply_text(
+            messages[lang]["ask_seed_action"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(messages[lang]["add_seed"], callback_data="add_seed")],
+                [InlineKeyboardButton(messages[lang]["remove_seed"], callback_data="remove_seed")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return SEED_ACTION
+    elif query.data == "manage_balance":
+        await query.message.reply_text(
+            messages[lang]["ask_balance_action"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(messages[lang]["add_balance"], callback_data="add_balance")],
+                [InlineKeyboardButton(messages[lang]["subtract_balance"], callback_data="subtract_balance")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return BALANCE_ACTION
+    elif query.data == "manage_users":
+        await manage_users(update, context)
+        return MANAGE_USERS
+    else:
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user ID input for ban."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    input_text = update.message.text.strip()
+    logger.info(f"Admin {user_id} entered user ID: {input_text}")
+
+    try:
+        target_user_id = int(input_text)
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT user_id FROM users WHERE user_id = %s AND is_banned = FALSE', (target_user_id,))
+                if not c.fetchone():
+                    await update.message.reply_text(
+                        messages[lang]["invalid_user_id"],
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                        ])
+                    )
+                    return ENTER_USER_ID
+        context.user_data["target_user_id"] = target_user_id
+        await update.message.reply_text(
+            messages[lang]["confirm_ban_user"](target_user_id),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_ban")],
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return BAN_USER
+    except ValueError:
+        await update.message.reply_text(
+            messages[lang]["invalid_user_id"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_USER_ID
+    except Exception as e:
+        logger.error(f"Error in handle_user_id for admin {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user ban confirmation."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    target_user_id = context.user_data.get("target_user_id")
+    logger.info(f"Admin {user_id} confirming ban for user {target_user_id}")
+
+    if query.data == "confirm_ban":
+        if not target_user_id:
+            await query.message.reply_text(
+                messages[lang]["invalid_user_id"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang, user_id)
+            )
+            return ConversationHandler.END
+        try:
+            if ban_user(target_user_id):
+                await query.message.reply_text(
+                    messages[lang]["user_banned"](target_user_id),
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang, user_id)
+                )
+            else:
+                await query.message.reply_text(
+                    messages[lang]["invalid_user_id"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang, user_id)
+                )
+            context.user_data.clear()
+            return ConversationHandler.END
+        except Exception as e:
+            logger.error(f"Error banning user {target_user_id} by admin {user_id}: {e}")
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang, user_id)
+            )
+            return ConversationHandler.END
+    elif query.data == "manage_users":
+        await manage_users(update, context)
+        return MANAGE_USERS
+    else:
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_seed_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed action selection (add/remove)."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"Admin {user_id} selected seed action: {query.data}")
+
+    if query.data in ["add_seed", "remove_seed"]:
+        context.user_data["seed_action"] = query.data
+        await query.message.reply_text(
+            messages[lang]["ask_user_id"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_USER_ID
+    elif query.data == "manage_users":
+        await manage_users(update, context)
+        return MANAGE_USERS
+    else:
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_seed_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user ID input for seed management."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    input_text = update.message.text.strip()
+    logger.info(f"Admin {user_id} entered user ID for seed management: {input_text}")
+
+    try:
+        target_user_id = int(input_text)
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT user_id FROM users WHERE user_id = %s AND is_banned = FALSE', (target_user_id,))
+                if not c.fetchone():
+                    await update.message.reply_text(
+                        messages[lang]["invalid_user_id"],
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                        ])
+                    )
+                    return ENTER_USER_ID
+        context.user_data["target_user_id"] = target_user_id
+        if context.user_data.get("seed_action") == "add_seed":
+            keyboard = [
+                [InlineKeyboardButton(seed["name_fa" if lang == "fa" else "name"] + f" {seed['emoji']}", callback_data=f"add_seed_{idx}")]
+                for idx, seed in enumerate(SEEDS)
+            ]
+            keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+            await update.message.reply_text(
+                messages[lang]["select_seed_to_add"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return SELECT_SEED_ADD
+        else:  # remove_seed
+            user_seeds = get_user_seeds(target_user_id)
+            if not user_seeds:
+                await update.message.reply_text(
+                    messages[lang]["no_seeds_to_remove"],
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                    ])
+                )
+                return MANAGE_USERS
+            keyboard = [
+                [InlineKeyboardButton(f"{seed[1 if lang == 'fa' else 0]} (ID: {seed[6]})", callback_data=f"remove_seed_{seed[6]}")]
+                for seed in user_seeds
+            ]
+            keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+            await update.message.reply_text(
+                messages[lang]["select_seed_to_remove"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return SELECT_SEED_REMOVE
+    except ValueError:
+        await update.message.reply_text(
+            messages[lang]["invalid_user_id"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_USER_ID
+    except Exception as e:
+        logger.error(f"Error in handle_seed_user_id for admin {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_seed_selection_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed selection for add/remove."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    target_user_id = context.user_data.get("target_user_id")
+    logger.info(f"Admin {user_id} selected seed action for user {target_user_id}: {query.data}")
+
+    try:
+        if query.data.startswith("add_seed_"):
+            seed_idx = int(query.data.split("_")[2])
+            seed = SEEDS[seed_idx]
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor() as c:
+                    c.execute('SELECT seed_id FROM seeds WHERE name = %s', (seed["name"],))
+                    seed_id = c.fetchone()[0]
+            add_user_seed_admin(target_user_id, seed_id)
+            await query.message.reply_text(
+                messages[lang]["seed_added"](seed["name_fa" if lang == "fa" else "name"], target_user_id),
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang, user_id)
+            )
+            context.user_data.clear()
+            return ConversationHandler.END
+        elif query.data.startswith("remove_seed_"):
+            user_seed_id = int(query.data.split("_")[2])
+            seed_info = get_user_seed(target_user_id, user_seed_id)
+            if not seed_info:
+                await query.message.reply_text(
+                    messages[lang]["invalid_data"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang, user_id)
+                )
+                return ConversationHandler.END
+            with psycopg2.connect(DATABASE_URL) as conn:
+                with conn.cursor() as c:
+                    c.execute('SELECT name, name_fa FROM seeds WHERE seed_id = %s', (seed_info[0],))
+                    seed_name, seed_name_fa = c.fetchone()
+            if remove_user_seed(target_user_id, user_seed_id):
+                await query.message.reply_text(
+                    messages[lang]["seed_removed"](seed_name_fa if lang == "fa" else seed_name, target_user_id),
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang, user_id)
+                )
+            else:
+                await query.message.reply_text(
+                    messages[lang]["invalid_data"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang, user_id)
+                )
+            context.user_data.clear()
+            return ConversationHandler.END
+        elif query.data == "manage_users":
+            await manage_users(update, context)
+            return MANAGE_USERS
+        else:
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang, user_id)
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in handle_seed_selection_admin for admin {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_balance_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle balance action selection (add/subtract)."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"Admin {user_id} selected balance action: {query.data}")
+
+    if query.data in ["add_balance", "subtract_balance"]:
+        context.user_data["balance_action"] = query.data
+        await query.message.reply_text(
+            messages[lang]["ask_user_id"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_USER_ID
+    elif query.data == "manage_users":
+        await manage_users(update, context)
+        return MANAGE_USERS
+    else:
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_balance_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user ID input for balance management."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    input_text = update.message.text.strip()
+    logger.info(f"Admin {user_id} entered user ID for balance management: {input_text}")
+
+    try:
+        target_user_id = int(input_text)
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT user_id FROM users WHERE user_id = %s AND is_banned = FALSE', (target_user_id,))
+                if not c.fetchone():
+                    await update.message.reply_text(
+                        messages[lang]["invalid_user_id"],
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                        ])
+                    )
+                    return ENTER_USER_ID
+        context.user_data["target_user_id"] = target_user_id
+        await update.message.reply_text(
+            messages[lang]["ask_balance_amount"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_BALANCE_AMOUNT
+    except ValueError:
+        await update.message.reply_text(
+            messages[lang]["invalid_user_id"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_USER_ID
+    except Exception as e:
+        logger.error(f"Error in handle_balance_user_id for admin {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
+
+async def handle_balance_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle balance amount input."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    target_user_id = context.user_data.get("target_user_id")
+    balance_action = context.user_data.get("balance_action")
+    input_text = update.message.text.strip()
+    logger.info(f"Admin {user_id} entered balance amount for user {target_user_id}: {input_text}")
+
+    try:
+        amount = float(input_text)
+        if amount <= 0:
+            await update.message.reply_text(
+                messages[lang]["invalid_balance_amount"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                ])
+            )
+            return ENTER_BALANCE_AMOUNT
+        amount = amount if balance_action == "add_balance" else -amount
+        update_balance(target_user_id, amount)
+        action_text = "افزایش یافت" if balance_action == "add_balance" else "کاهش یافت" if lang == "fa" else \
+                      "increased" if balance_action == "add_balance" else "decreased"
+        await update.message.reply_text(
+            messages[lang]["balance_updated"](target_user_id, abs(amount), action_text),
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+    except ValueError:
+        await update.message.reply_text(
+            messages[lang]["invalid_balance_amount"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return ENTER_BALANCE_AMOUNT
+    except Exception as e:
+        logger.error(f"Error in handle_balance_amount for admin {user_id}: {e}")
+        await update.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END
 
 def main():
     """Run the bot."""
@@ -3560,6 +4180,12 @@ def main():
             CallbackQueryHandler(handle_admin_action, pattern=r"^(approve|reject)_\d+$"),
             CallbackQueryHandler(handle_balance_purchase, pattern=r"^confirm_balance_purchase$"),
             CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+            CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
+            CallbackQueryHandler(handle_ban_user, pattern=r"^confirm_ban$"),
+            CallbackQueryHandler(handle_seed_action, pattern=r"^(add_seed|remove_seed)$"),
+            CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^(add_seed_\d+|remove_seed_\d+)$"),
+            CallbackQueryHandler(handle_balance_action, pattern=r"^(add_balance|subtract_balance)$"),
         ],
         states={
             SELECT_SEED: [
@@ -3618,6 +4244,48 @@ def main():
                     handle_balance_purchase,
                     pattern=r"^confirm_balance_purchase$"
                 ),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            MANAGE_USERS: [
+                CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            ENTER_USER_ID: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_seed_user_id),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_balance_user_id),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            BAN_USER: [
+                CallbackQueryHandler(handle_ban_user, pattern=r"^confirm_ban$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            SEED_ACTION: [
+                CallbackQueryHandler(handle_seed_action, pattern=r"^(add_seed|remove_seed)$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            SELECT_SEED_ADD: [
+                CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^add_seed_\d+$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            SELECT_SEED_REMOVE: [
+                CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^remove_seed_\d+$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            BALANCE_ACTION: [
+                CallbackQueryHandler(handle_balance_action, pattern=r"^(add_balance|subtract_balance)$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            ENTER_BALANCE_AMOUNT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_balance_amount),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
         },
