@@ -1072,6 +1072,8 @@ def get_users_paginated(page=1, per_page=5):
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
+                # چک کردن اتصال دیتابیس
+                c.execute('SELECT 1')
                 offset = (page - 1) * per_page
                 c.execute('''
                     SELECT user_id, username
@@ -1085,9 +1087,12 @@ def get_users_paginated(page=1, per_page=5):
                 total_users = c.fetchone()[0]
                 total_pages = (total_users + per_page - 1) // per_page
                 return users, total_pages
+    except psycopg2.Error as db_e:
+        logger.error(f"Database error in get_users_paginated for page {page}: {db_e}", exc_info=True)
+        raise
     except Exception as e:
-        logger.error(f"Error getting paginated users for page {page}: {e}")
-        return [], 0
+        logger.error(f"Unexpected error in get_users_paginated for page {page}: {e}", exc_info=True)
+        raise
 
 def get_user_details(user_id, lang):
     """Retrieve detailed information about a user."""
@@ -4100,48 +4105,59 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = user[0] if user else "en"
     logger.info(f"Admin {user_id} opened view users menu")
 
-    # گرفتن شماره صفحه فعلی
-    page = context.user_data.get("current_page", 1)
-    if query.data == "next_page":
-        page += 1
-    elif query.data == "prev_page":
-        page = max(1, page - 1)
-    context.user_data["current_page"] = page
+    try:
+        # گرفتن شماره صفحه فعلی
+        page = context.user_data.get("current_page", 1)
+        if query.data == "next_page":
+            page += 1
+        elif query.data == "prev_page":
+            page = max(1, page - 1)
+        context.user_data["current_page"] = page
 
-    # گرفتن کاربران و تعداد صفحات
-    users, total_pages = get_users_paginated(page=page, per_page=5)
+        # گرفتن کاربران و تعداد صفحات
+        users, total_pages = get_users_paginated(page=page, per_page=5)
 
-    if not users:
+        if not users:
+            await query.message.reply_text(
+                messages[lang]["no_users"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                ])
+            )
+            return MANAGE_USERS
+
+        # ساخت کیبورد
+        keyboard = [
+            [InlineKeyboardButton(f"@{user[1] or f'User_{user[0]}'}", callback_data=f"user_details_{user[0]}")]
+            for user in users
+        ]
+        # اضافه کردن دکمه‌های صفحه‌بندی
+        nav_buttons = []
+        if page > 1:
+            nav_buttons.append(InlineKeyboardButton(messages[lang]["prev_page"], callback_data="prev_page"))
+        if page < total_pages:
+            nav_buttons.append(InlineKeyboardButton(messages[lang]["next_page"], callback_data="next_page"))
+        if nav_buttons:
+            keyboard.append(nav_buttons)
+        keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+
         await query.message.reply_text(
-            messages[lang]["no_users"],
+            f"{messages[lang]['view_users_menu']}\n{messages[lang]['page_info'](page, total_pages)}",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return VIEW_USERS
+    except Exception as e:
+        logger.error(f"Error in view_users for admin {user_id}: {str(e)}", exc_info=True)
+        await query.message.reply_text(
+            f"{messages[lang]['error']}\nجزئیات: {str(e)}",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
             ])
         )
         return MANAGE_USERS
-
-    # ساخت کیبورد
-    keyboard = [
-        [InlineKeyboardButton(f"@{user[1] or f'User_{user[0]}'}", callback_data=f"user_details_{user[0]}")]
-        for user in users
-    ]
-    # اضافه کردن دکمه‌های صفحه‌بندی
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton(messages[lang]["prev_page"], callback_data="prev_page"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton(messages[lang]["next_page"], callback_data="next_page"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
-
-    await query.message.reply_text(
-        f"{messages[lang]['view_users_menu']}\n{messages[lang]['page_info'](page, total_pages)}",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return VIEW_USERS
 
 async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display detailed information about a selected user."""
@@ -4158,8 +4174,10 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if query.data.startswith("user_details_"):
             target_user_id = int(query.data.split("_")[2])
+            logger.info(f"Fetching details for user {target_user_id}")
             details = get_user_details(target_user_id, lang)
             if not details:
+                logger.warning(f"No details found for user {target_user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_user_id"],
                     parse_mode="Markdown",
@@ -4185,7 +4203,7 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return VIEW_USERS
         elif query.data == "view_users":
-            context.user_data["current_page"] = 1  # ریست کردن صفحه به 1
+            context.user_data["current_page"] = 1
             await view_users(update, context)
             return VIEW_USERS
         elif query.data in ["next_page", "prev_page"]:
@@ -4195,6 +4213,7 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await manage_users(update, context)
             return MANAGE_USERS
         else:
+            logger.warning(f"Unhandled callback data in view_user_details: {query.data}")
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
@@ -4202,13 +4221,15 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return ConversationHandler.END
     except Exception as e:
-        logger.error(f"Error in view_user_details for admin {user_id}: {e}")
+        logger.error(f"Error in view_user_details for admin {user_id}, callback {query.data}: {str(e)}", exc_info=True)
         await query.message.reply_text(
-            messages[lang]["error"],
+            f"{messages[lang]['error']}\nجزئیات: {str(e)}",
             parse_mode="Markdown",
-            reply_markup=get_main_menu(lang, user_id)
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
         )
-        return ConversationHandler.END            
+        return MANAGE_USERS        
 
 async def handle_user_id_common(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle user ID input for ban, seed management, or balance management."""
