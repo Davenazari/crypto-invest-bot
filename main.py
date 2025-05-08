@@ -1072,9 +1072,11 @@ def get_users_paginated(page=1, per_page=5):
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # چک کردن اتصال دیتابیس
+                logger.info(f"Testing database connection for page {page}")
                 c.execute('SELECT 1')
+                logger.info(f"Database connection successful")
                 offset = (page - 1) * per_page
+                logger.info(f"Executing query for page {page}, offset {offset}, per_page {per_page}")
                 c.execute('''
                     SELECT user_id, username
                     FROM users
@@ -1083,9 +1085,11 @@ def get_users_paginated(page=1, per_page=5):
                     LIMIT %s OFFSET %s
                 ''', (per_page, offset))
                 users = c.fetchall()
+                logger.info(f"Retrieved {len(users)} users for page {page}")
                 c.execute('SELECT COUNT(*) FROM users WHERE is_banned = FALSE')
                 total_users = c.fetchone()[0]
                 total_pages = (total_users + per_page - 1) // per_page
+                logger.info(f"Total users: {total_users}, total pages: {total_pages}")
                 return users, total_pages
     except psycopg2.Error as db_e:
         logger.error(f"Database error in get_users_paginated for page {page}: {db_e}", exc_info=True)
@@ -3753,6 +3757,29 @@ async def debug_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error debugging balance for user {user_id}: {e}")
         await update.message.reply_text(f"Error: {str(e)}") 
+
+async def debug_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Debug the list of users in the database."""
+    user_id = update.effective_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await update.message.reply_text("🚫 Unauthorized", parse_mode="Markdown")
+        return
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                c.execute('SELECT user_id, username, is_banned FROM users ORDER BY user_id')
+                users = c.fetchall()
+                if not users:
+                    response = "No users found in the database."
+                else:
+                    response = "\n".join(
+                        f"User ID: {row[0]}, Username: {row[1] or 'None'}, Banned: {row[2]}"
+                        for row in users
+                    )
+                await update.message.reply_text(f"Users in database:\n{response}", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error debugging users for admin {user_id}: {e}", exc_info=True)
+        await update.message.reply_text(f"Error: {str(e)}", parse_mode="Markdown")        
      
 # Conversation states for manage users
 MANAGE_USERS, ENTER_USER_ID, BAN_USER, SEED_ACTION, SELECT_SEED_ADD, SELECT_SEED_REMOVE, BALANCE_ACTION, ENTER_BALANCE_AMOUNT, VIEW_USERS, VIEW_USER_DETAILS = range(10, 20)
@@ -4107,17 +4134,25 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # گرفتن شماره صفحه فعلی
+        logger.info(f"Fetching current page from user_data for admin {user_id}")
         page = context.user_data.get("current_page", 1)
+        logger.info(f"Current page: {page}")
         if query.data == "next_page":
             page += 1
+            logger.info(f"Incremented to page: {page}")
         elif query.data == "prev_page":
             page = max(1, page - 1)
+            logger.info(f"Decremented to page: {page}")
         context.user_data["current_page"] = page
+        logger.info(f"Set current_page to {page} in user_data")
 
         # گرفتن کاربران و تعداد صفحات
+        logger.info(f"Calling get_users_paginated for page {page}")
         users, total_pages = get_users_paginated(page=page, per_page=5)
+        logger.info(f"Received {len(users)} users, total_pages: {total_pages}")
 
         if not users:
+            logger.info(f"No users found for page {page}")
             await query.message.reply_text(
                 messages[lang]["no_users"],
                 parse_mode="Markdown",
@@ -4128,6 +4163,7 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return MANAGE_USERS
 
         # ساخت کیبورد
+        logger.info(f"Building keyboard for {len(users)} users")
         keyboard = [
             [InlineKeyboardButton(f"@{user[1] or f'User_{user[0]}'}", callback_data=f"user_details_{user[0]}")]
             for user in users
@@ -4141,12 +4177,14 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if nav_buttons:
             keyboard.append(nav_buttons)
         keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+        logger.info(f"Keyboard built with {len(keyboard)} rows")
 
         await query.message.reply_text(
             f"{messages[lang]['view_users_menu']}\n{messages[lang]['page_info'](page, total_pages)}",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        logger.info(f"Sent user list to admin {user_id} for page {page}")
         return VIEW_USERS
     except Exception as e:
         logger.error(f"Error in view_users for admin {user_id}: {str(e)}", exc_info=True)
@@ -4526,6 +4564,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
     app.add_handler(CommandHandler("debug_balance", debug_balance))
+    app.add_handler(CommandHandler("debug_users", debug_users))
 
     # Start the bot
     logger.info("Starting bot")
