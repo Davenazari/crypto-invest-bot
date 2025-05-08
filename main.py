@@ -319,6 +319,22 @@ messages = {
             "⚠️ *خطا*: هیچ سودی برای برداشت وجود نداره!\n"
             "📌 لطفاً بعد از کاشت و زمان مناسب دوباره تلاش کنید."
         ),
+        "view_users_menu": "👥 *لیست کاربران*\nلطفاً یک کاربر را برای مشاهده جزئیات انتخاب کنید:",
+        "no_users": "⚠️ *بدون کاربر*\nهیچ کاربری در سیستم ثبت نشده است.",
+        "user_details": lambda username, balance, seeds, total_profit, transaction_count, last_transaction, referral_count: (
+            f"👤 *کاربر: @{username}*\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"💰 **موجودی**: `{balance}` تتر\n"
+            f"🌱 **بذرهای کاربر**: {seeds or 'هیچ بذری ندارد'}\n"
+            f"📈 **کل سود کسب‌شده**: `{total_profit}` تتر\n"
+            f"📝 **تراکنش‌های موفق**: `{transaction_count}`\n"
+            f"⏰ **آخرین تراکنش**: {'ندارد' if not last_transaction else last_transaction}\n"
+            f"🤝 **تعداد رفرال‌ها**: `{referral_count}` نفر\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+        ),
+        "page_info": lambda current, total: f"📄 صفحه {current} از {total}",
+        "next_page": "➡️ صفحه بعدی",
+        "prev_page": "⬅️ صفحه قبلی",
         "manage_users_menu": "👤 *مدیریت کاربران*\nلطفاً یک گزینه انتخاب کنید:",
         "ban_user": "🚫 بن/حذف کاربر",
         "manage_seeds": "🌱 مدیریت بذرها",
@@ -620,6 +636,22 @@ messages = {
             "⚠️ *Error*: No profit available to harvest!\n"
             "📌 Please try again after planting and at the appropriate time."
         ),
+        "view_users_menu": "👥 *List of Users*\nPlease select a user to view details:",
+        "no_users": "⚠️ *No Users*\nNo users are registered in the system.",
+        "user_details": lambda username, balance, seeds, total_profit, transaction_count, last_transaction, referral_count: (
+            f"👤 *User: @{username}*\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
+            f"💰 **Balance**: `{balance}` USDT\n"
+            f"🌱 **User's Seeds**: {seeds or 'No seeds'}\n"
+            f"📈 **Total Profit Earned**: `{total_profit}` USDT\n"
+            f"📝 **Successful Transactions**: `{transaction_count}`\n"
+            f"⏰ **Last Transaction**: {'None' if not last_transaction else last_transaction}\n"
+            f"🤝 **Number of Referrals**: `{referral_count}`\n"
+            f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+        ),
+        "page_info": lambda current, total: f"📄 Page {current} of {total}",
+        "next_page": "➡️ Next Page",
+        "prev_page": "⬅️ Previous Page",
         "manage_users_menu": "👤 *Manage Users*\nPlease select an option:",
         "ban_user": "🚫 Ban/Delete User",
         "manage_seeds": "🌱 Manage Seeds",
@@ -1033,7 +1065,87 @@ def get_referral_details(referrer_id, referred_id, lang):
                 }
     except Exception as e:
         logger.error(f"Error getting referral details for referrer {referrer_id}, referred {referred_id}: {e}")
-        return None    
+        return None  
+
+def get_users_paginated(page=1, per_page=5):
+    """Retrieve a paginated list of users who are not banned."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                offset = (page - 1) * per_page
+                c.execute('''
+                    SELECT user_id, username
+                    FROM users
+                    WHERE is_banned = FALSE
+                    ORDER BY user_id
+                    LIMIT %s OFFSET %s
+                ''', (per_page, offset))
+                users = c.fetchall()
+                c.execute('SELECT COUNT(*) FROM users WHERE is_banned = FALSE')
+                total_users = c.fetchone()[0]
+                total_pages = (total_users + per_page - 1) // per_page
+                return users, total_pages
+    except Exception as e:
+        logger.error(f"Error getting paginated users for page {page}: {e}")
+        return [], 0
+
+def get_user_details(user_id, lang):
+    """Retrieve detailed information about a user."""
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                # گرفتن اطلاعات کاربر
+                c.execute('''
+                    SELECT username, balance
+                    FROM users
+                    WHERE user_id = %s AND is_banned = FALSE
+                ''', (user_id,))
+                user_info = c.fetchone()
+                if not user_info:
+                    return None
+                username, balance = user_info
+
+                # گرفتن بذرها
+                c.execute('''
+                    SELECT s.name, s.name_fa
+                    FROM user_seeds us
+                    JOIN seeds s ON us.seed_id = s.seed_id
+                    WHERE us.user_id = %s
+                ''', (user_id,))
+                seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                seeds_text = ", ".join(seeds) if seeds else None
+
+                # گرفتن کل سود (بذرها + رفرال‌ها)
+                c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                seed_profit = c.fetchone()[0] or 0.0
+                c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                referral_profit = c.fetchone()[0] or 0.0
+                total_profit = seed_profit + referral_profit
+
+                # گرفتن تعداد تراکنش‌های موفق
+                c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                transaction_count = c.fetchone()[0]
+
+                # گرفتن آخرین تراکنش
+                c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+
+                # گرفتن تعداد رفرال‌ها
+                c.execute('SELECT COUNT(*) FROM referrals WHERE referrer_id = %s', (user_id,))
+                referral_count = c.fetchone()[0]
+
+                return {
+                    "username": username or f"User_{user_id}",
+                    "balance": balance,
+                    "seeds": seeds_text,
+                    "total_profit": total_profit,
+                    "transaction_count": transaction_count,
+                    "last_transaction": last_transaction,
+                    "referral_count": referral_count
+                }
+    except Exception as e:
+        logger.error(f"Error getting user details for user {user_id}: {e}")
+        return None                  
 
 def update_balance(user_id, amount):
     """Update user balance."""
@@ -3638,7 +3750,7 @@ async def debug_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {str(e)}") 
      
 # Conversation states for manage users
-MANAGE_USERS, ENTER_USER_ID, BAN_USER, SEED_ACTION, SELECT_SEED_ADD, SELECT_SEED_REMOVE, BALANCE_ACTION, ENTER_BALANCE_AMOUNT = range(10, 18)
+MANAGE_USERS, ENTER_USER_ID, BAN_USER, SEED_ACTION, SELECT_SEED_ADD, SELECT_SEED_REMOVE, BALANCE_ACTION, ENTER_BALANCE_AMOUNT, VIEW_USERS, VIEW_USER_DETAILS = range(10, 20)
 
 async def manage_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle manage users menu."""
@@ -3658,6 +3770,7 @@ async def manage_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(messages[lang]["ban_user"], callback_data="ban_user")],
             [InlineKeyboardButton(messages[lang]["manage_seeds"], callback_data="manage_seeds")],
             [InlineKeyboardButton(messages[lang]["manage_balance"], callback_data="manage_balance")],
+            [InlineKeyboardButton("👥 مشاهده کاربران" if lang == "fa" else "👥 View Users", callback_data="view_users")],
             [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
         ])
     )
@@ -3975,6 +4088,128 @@ async def handle_balance_amount(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return ConversationHandler.END
 
+async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display a paginated list of users."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"Admin {user_id} opened view users menu")
+
+    # گرفتن شماره صفحه فعلی
+    page = context.user_data.get("current_page", 1)
+    if query.data == "next_page":
+        page += 1
+    elif query.data == "prev_page":
+        page = max(1, page - 1)
+    context.user_data["current_page"] = page
+
+    # گرفتن کاربران و تعداد صفحات
+    users, total_pages = get_users_paginated(page=page, per_page=5)
+
+    if not users:
+        await query.message.reply_text(
+            messages[lang]["no_users"],
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+            ])
+        )
+        return MANAGE_USERS
+
+    # ساخت کیبورد
+    keyboard = [
+        [InlineKeyboardButton(f"@{user[1] or f'User_{user[0]}'}", callback_data=f"user_details_{user[0]}")]
+        for user in users
+    ]
+    # اضافه کردن دکمه‌های صفحه‌بندی
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton(messages[lang]["prev_page"], callback_data="prev_page"))
+    if page < total_pages:
+        nav_buttons.append(InlineKeyboardButton(messages[lang]["next_page"], callback_data="next_page"))
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
+
+    await query.message.reply_text(
+        f"{messages[lang]['view_users_menu']}\n{messages[lang]['page_info'](page, total_pages)}",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return VIEW_USERS
+
+async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display detailed information about a selected user."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    if user_id != DEFAULT_ADMIN_ID:
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        return ConversationHandler.END
+    user = get_user(user_id)
+    lang = user[0] if user else "en"
+    logger.info(f"Admin {user_id} requested user details: {query.data}")
+
+    try:
+        if query.data.startswith("user_details_"):
+            target_user_id = int(query.data.split("_")[2])
+            details = get_user_details(target_user_id, lang)
+            if not details:
+                await query.message.reply_text(
+                    messages[lang]["invalid_user_id"],
+                    parse_mode="Markdown",
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="view_users")]
+                    ])
+                )
+                return VIEW_USERS
+            await query.message.reply_text(
+                messages[lang]["user_details"](
+                    details["username"],
+                    details["balance"],
+                    details["seeds"],
+                    details["total_profit"],
+                    details["transaction_count"],
+                    details["last_transaction"],
+                    details["referral_count"]
+                ),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="view_users")]
+                ])
+            )
+            return VIEW_USERS
+        elif query.data == "view_users":
+            context.user_data["current_page"] = 1  # ریست کردن صفحه به 1
+            await view_users(update, context)
+            return VIEW_USERS
+        elif query.data in ["next_page", "prev_page"]:
+            await view_users(update, context)
+            return VIEW_USERS
+        elif query.data == "manage_users":
+            await manage_users(update, context)
+            return MANAGE_USERS
+        else:
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=get_main_menu(lang, user_id)
+            )
+            return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error in view_user_details for admin {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang, user_id)
+        )
+        return ConversationHandler.END            
+
 async def handle_user_id_common(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle user ID input for ban, seed management, or balance management."""
     user_id = update.effective_user.id
@@ -4122,11 +4357,13 @@ def main():
             CallbackQueryHandler(handle_balance_purchase, pattern=r"^confirm_balance_purchase$"),
             CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
-            CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
+            CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance|view_users)$"),
             CallbackQueryHandler(handle_ban_user, pattern=r"^confirm_ban$"),
             CallbackQueryHandler(handle_seed_action, pattern=r"^(add_seed|remove_seed)$"),
             CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^(add_seed_\d+|remove_seed_\d+)$"),
             CallbackQueryHandler(handle_balance_action, pattern=r"^(add_balance|subtract_balance)$"),
+            CallbackQueryHandler(view_users, pattern=r"^(view_users|next_page|prev_page)$"),
+            CallbackQueryHandler(view_user_details, pattern=r"^user_details_\d+$"),
         ],
         states={
             SELECT_SEED: [
@@ -4188,7 +4425,18 @@ def main():
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             MANAGE_USERS: [
-                CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
+                CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance|view_users)$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            VIEW_USERS: [
+                CallbackQueryHandler(view_users, pattern=r"^(view_users|next_page|prev_page)$"),
+                CallbackQueryHandler(view_user_details, pattern=r"^user_details_\d+$"),
+                CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
+            ],
+            VIEW_USER_DETAILS: [
+                CallbackQueryHandler(view_user_details, pattern=r"^(view_users|user_details_\d+|next_page|prev_page)$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
