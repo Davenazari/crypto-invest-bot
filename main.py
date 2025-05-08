@@ -33,12 +33,12 @@ langs = {"فارسی": "fa", "English": "en"}
 
 # 🌱 **لیست بذرهای مزرعه** 🌾
 SEEDS = [
-    {"name": "VIP1: Tomato", "name_fa": "VIP1: گوجه", "price": 15, "daily_profit_rate": 0.001, "emoji": "🍅"},
-    {"name": "VIP2: Cucumber", "name_fa": "VIP2: خیار", "price": 30, "daily_profit_rate": 0.0015, "emoji": "🥒"},
-    {"name": "VIP3: Orange", "name_fa": "VIP3: پرتغال", "price": 50, "daily_profit_rate": 0.002, "emoji": "🍊"},
-    {"name": "VIP4: Apple", "name_fa": "VIP4: سیب", "price": 120, "daily_profit_rate": 0.0028, "emoji": "🍎"},
-    {"name": "VIP5: Banana", "name_fa": "VIP5: موز", "price": 320, "daily_profit_rate": 0.004, "emoji": "🍌"},
-    {"name": "VIP6: Mango", "name_fa": "VIP6: انبه", "price": 550, "daily_profit_rate": 0.005, "emoji": "🥭"},
+    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.001, "emoji": "🍅"},
+    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.0015, "emoji": "🥒"},
+    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.002, "emoji": "🍊"},
+    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0028, "emoji": "🍎"},
+    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.004, "emoji": "🍌"},
+    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.005, "emoji": "🥭"},
 ]
 
 # Localized messages
