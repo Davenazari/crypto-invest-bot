@@ -3638,7 +3638,7 @@ async def debug_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error: {str(e)}") 
      
 # Conversation states for manage users
-MANAGE_USERS, ENTER_USER_ID, BAN_USER, SEED_ACTION, SELECT_SEED_ADD, SELECT_SEED_REMOVE, BALANCE_ACTION, ENTER_BALANCE_AMOUNT, VIEW_USERS = range(10, 18)
+MANAGE_USERS, ENTER_USER_ID, BAN_USER, SEED_ACTION, SELECT_SEED_ADD, SELECT_SEED_REMOVE, BALANCE_ACTION, ENTER_BALANCE_AMOUNT, VIEW_USERS = range(10, 19)
 
 async def manage_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle manage users menu."""
