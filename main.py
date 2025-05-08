@@ -1402,21 +1402,37 @@ def get_main_menu(lang):
 
 
 def get_wallet_menu(lang, balance, has_seeds):
-    """Generate wallet menu keyboard."""
-    buttons = [
-        [
-            InlineKeyboardButton("🌱 کاشت بذر" if lang == "fa" else "🌱 Plant Seed", callback_data="plant_seed"),
-            InlineKeyboardButton("🚜 برداشت سود" if lang == "fa" else "🚜 Harvest Profit", callback_data="harvest_seed")
-        ],
-        [
-            InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed"),
-            InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
-        ]
-    ]
-    if balance >= 15:
-        buttons.append([InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw")])
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(buttons)
+    """Generate the wallet menu keyboard."""
+    keyboard = []
+    if has_seeds:
+        keyboard.append([
+            InlineKeyboardButton(
+                "🌱 کاشت بذر" if lang == "fa" else "🌱 Plant Seed",
+                callback_data="plant_seed"
+            ),
+            InlineKeyboardButton(
+                "🚜 برداشت سود" if lang == "fa" else "🚜 Harvest Profit",
+                callback_data="harvest_seed"
+            )
+        ])
+    # حذف شرط balance >= 15 و اضافه کردن دکمه برداشت به صورت پیش‌فرض
+    keyboard.append([
+        InlineKeyboardButton(
+            "📤 برداشت" if lang == "fa" else "📤 Withdraw",
+            callback_data="withdraw"
+        )
+    ])
+    keyboard.append([
+        InlineKeyboardButton(
+            "📜 تاریخچه" if lang == "fa" else "📜 History",
+            callback_data="history"
+        ),
+        InlineKeyboardButton(
+            "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+            callback_data="back_to_menu"
+        )
+    ])
+    return InlineKeyboardMarkup(keyboard)
 
 def get_referral_menu(lang, referrals):
     buttons = [
