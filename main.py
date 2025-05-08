@@ -612,6 +612,19 @@ if not DATABASE_URL:
     exit(1)
 
 # Database initialization
+async def notify_admin_error(bot_token, error_message):
+    """Send error notification to admin asynchronously."""
+    try:
+        bot = Bot(token=bot_token)
+        await bot.send_message(
+            chat_id=DEFAULT_ADMIN_ID,
+            text=f"⚠️ *Error*: {error_message}",
+            parse_mode="Markdown"
+        )
+        logger.info("Successfully sent error notification to admin")
+    except telegram.error.TelegramError as admin_e:
+        logger.error(f"Failed to notify admin: {admin_e}")
+        
 def init_db():
     """Initialize database tables and update seed profit rates."""
     try:
@@ -630,7 +643,7 @@ def init_db():
                 logger.info("Adding bonus and fmx_balance columns to users table")
                 c.execute('''
                     ALTER TABLE users
-                    ADD COLUMN IF NOT EXISTS bonus REAL DEFAULT 0.0,
+                    ADD COLUMN IF NOT EXISTS "bonus" REAL DEFAULT 0.0,
                     ADD COLUMN IF NOT EXISTS fmx_balance REAL DEFAULT 0.0
                 ''')
                 logger.info("Successfully added bonus and fmx_balance columns to users table")
@@ -643,8 +656,8 @@ def init_db():
                         language TEXT DEFAULT 'en',
                         balance REAL DEFAULT 0.0,
                         username TEXT,
-                        created_at TEXT
-                        bonus REAL DEFAULT 0.0,
+                        created_at TEXT,
+                        "bonus" REAL DEFAULT 0.0,
                         fmx_balance REAL DEFAULT 0.0
                     )
                 ''')
@@ -792,16 +805,10 @@ def init_db():
                 conn.commit()
                 logger.info("Database initialized and seeds updated successfully")
     except Exception as e:
-        logger.error(f"Error initializing database: {e}", exc_info=True)
-        try:
-            bot = telegram.Bot(token=os.getenv("BOT_TOKEN"))
-            bot.send_message(
-                chat_id=DEFAULT_ADMIN_ID,
-                text=f"⚠️ *Error*: Failed to initialize database: {str(e)}",
-                parse_mode="Markdown"
-            )
-        except Exception as admin_e:
-            logger.error(f"Failed to notify admin about database initialization error: {admin_e}")
+        logger.error(f"Error initializing database: {str(e)}", exc_info=True)
+        bot_token = os.getenv("BOT_TOKEN")
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
         raise
 
 def fix_users_table():
@@ -3523,16 +3530,21 @@ def main():
         exit(1)
 
     # Initialize database and fix users table
+    logger.info("Starting database initialization")
     init_db()
     fix_users_table()
     logger.info("Database initialization and users table fix completed")
 
+    # Build the application
+    logger.info("Building Telegram application")
     app = ApplicationBuilder().token(token).build()
 
     # Run fix_database for user 5664533861 at startup
+    logger.info("Running fix_database for user 5664533861")
     fix_database(5664533861)
     logger.info("Ran fix_database for user 5664533861")
 
+    # Define conversation handler
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -3611,12 +3623,14 @@ def main():
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
-            CommandHandler("start", cancel),  # اضافه کردن هندلر برای /start
+            CommandHandler("start", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
         ],
         per_message=False
     )
 
+    # Add handlers to the application
+    logger.info("Adding handlers to the application")
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler(
         "approve",
@@ -3637,6 +3651,7 @@ def main():
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
     app.add_handler(CommandHandler("debug_balance", debug_balance))
 
+    # Start the bot
     logger.info("Starting bot")
     app.run_polling()
 
