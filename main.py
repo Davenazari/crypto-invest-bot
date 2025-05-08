@@ -141,10 +141,12 @@ messages = {
             "⚠️ *خطا*: موجودی کافی نیست!\n"
             "لطفاً مقداری کمتر یا برابر با موجودی مزرعه‌تون وارد کنید."
         ),
-        "ask_withdraw_address": (
-            "📋 *آدرس کیف پول*\n"
-            "لطفاً آدرس کیف پول USDT خودتون رو برای برداشت وارد کنید:\n"
-            "📌 آدرس رو با دقت وارد کنید."
+        "ask_withdraw_address": lambda network, example_address: (
+            f"✅ *آدرس کیف پول {network}*\n"
+            f"لطفاً آدرس کیف پول USDT خودتون رو برای برداشت وارد کنید:\n"
+            f"📋 مثال: `{example_address}`\n"
+            f"⚠️ *توجه*: فقط از شبکه *{network}* استفاده کنید!\n"
+            f"📌 آدرس رو با دقت وارد کنید."
         ),
         "choose_network_withdraw": (
             "📲 *انتخاب شبکه برای برداشت*\n"
@@ -414,10 +416,12 @@ messages = {
             "⚠️ *Error*: Insufficient balance!\n"
             "Please enter an amount less than or equal to your farm balance."
         ),
-        "ask_withdraw_address": (
-            "📋 *Wallet Address*\n"
+        "ask_withdraw_address": lambda network, example_address: (
+            f"✅ *{network} Wallet Address*\n"
             "Please enter your USDT wallet address for withdrawal:\n"
-            "📌 Enter the address carefully."
+            f"📋 Example: `{example_address}`\n"
+            f"⚠️ *Note*: Only use the *{network}* network!\n"
+            f"📌 Enter the address carefully."
         ),
         "choose_network_withdraw": (
             "📲 *Select Network for Withdrawal*\n"
@@ -2750,7 +2754,7 @@ async def handle_withdraw_network(update: Update, context: ContextTypes.DEFAULT_
                 return ConversationHandler.END
             context.user_data["withdraw_network"] = network
             await query.message.reply_text(
-                messages[lang]["ask_withdraw_address"],
+                messages[lang]["ask_withdraw_address"](network, wallet_addresses[network]),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")]
