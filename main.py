@@ -1411,10 +1411,11 @@ def get_wallet_menu(lang, balance, has_seeds):
         [
             InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed"),
             InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
+        ],
+        [
+            InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw")
         ]
     ]
-    if balance >= 15:
-        buttons.append([InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw")])
     buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
 
