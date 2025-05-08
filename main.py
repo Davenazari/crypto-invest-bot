@@ -260,12 +260,12 @@ messages = {
         ),
         "plant_success": (
             "🌱 *بذر کاشته شد!*\n"
-            "بذر شما با موفقیت کاشته شد. می‌تونید بعد از ساعت 00:00 (به وقت ایران) سودش رو برداشت کنید."
+            "بذر شما با موفقیت کاشته شد. می‌تونید بعد از ساعت 00:00 سودش رو برداشت کنید."
         ),
         "plant_already_done": (
-            "⚠️ *خطا*: این بذر امروز کاشته شده!\n"
+            "⚠️ *خطا*: این بذرها امروز کاشته شدن!\n"
             "هر بذر رو فقط یک‌بار در روز می‌تونید بکارید.\n"
-            "📌 فردا دوباره تلاش کنید یا بذر دیگه‌ای بکارید."
+            "📌 فردا دوباره تلاش کنید یا بذرهای دیگه‌ای بکارید."
         ),
         "harvest_seed": (
             "🚜 **برداشت سود** 💰\n"
@@ -278,8 +278,8 @@ messages = {
             f"📌 سود به موجودی مزرعه‌تون اضافه شد."
         ),
         "harvest_not_ready": (
-            "⚠️ *خطا*: هنوز نمی‌تونید سود این بذر رو برداشت کنید!\n"
-            "📌 لطفاً بعد از ساعت 00:00 (به وقت ایران) یا پس از کاشت بذر تلاش کنید."
+            "⚠️ *خطا*: هنوز نمی‌تونید سود این بذرها رو برداشت کنید!\n"
+            "📌 لطفاً بعد از ساعت 00:00 یا پس از کاشت بذرها دوباره تلاش کنید."
         ),
         "no_seeds": (
             "🌱 *بدون بذر*\n"
@@ -535,12 +535,12 @@ messages = {
         ),
         "plant_success": (
             "🌱 *Seed Planted!*\n"
-            "Your seed has been successfully planted. You can harvest its profit after 00:00 (IRST)."
+            "Your seed has been successfully planted. You can harvest its profit after 00:00."
         ),
         "plant_already_done": (
-            "⚠️ *Error*: This seed has already been planted today!\n"
+            "⚠️ *Error*: These seeds have already been planted today!\n"
             "You can only plant each seed once per day.\n"
-            "📌 Try again tomorrow or plant another seed."
+            "📌 Try again tomorrow or plant other seeds."
         ),
         "harvest_seed": (
             "🚜 **Harvest Profit** 💰\n"
@@ -553,8 +553,8 @@ messages = {
             f"📌 The profit has been added to your farm balance."
         ),
         "harvest_not_ready": (
-            "⚠️ *Error*: You can't harvest this seed yet!\n"
-            "📌 Please try after 00:00 (IRST) or after planting the seed."
+            "⚠️ *Error*: You can't harvest these seeds yet!\n"
+            "📌 Please try after 00:00 or after planting the seeds."
         ),
         "no_seeds": (
             "🌱 *No Seeds*\n"
