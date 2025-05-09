@@ -4109,27 +4109,27 @@ def get_users_paginated(page=1, page_size=5):
 async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle view users menu with pagination."""
     query = update.callback_query
-    logger.info(f"Received callback query: {query.data}")
-    await query.answer()
-    user_id = query.from_user.id
-    logger.info(f"Checking admin access for user {user_id}")
-    if user_id != DEFAULT_ADMIN_ID:
-        logger.warning(f"Unauthorized access attempt by user {user_id}")
-        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
-        return ConversationHandler.END
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    logger.info(f"Admin {user_id} opened view users menu with lang {lang}")
-
-    # گرفتن شماره صفحه از callback_data یا user_data
-    if query.data.startswith("page_"):
-        page = int(query.data.split("_")[1])
-        context.user_data["users_page"] = page
-    else:
-        page = int(context.user_data.get("users_page", 1))
-    logger.info(f"Fetching users for page {page}")
-
+    logger.info(f"View_users called with callback data: {query.data} by user {query.from_user.id}")
     try:
+        await query.answer()
+        user_id = query.from_user.id
+        logger.info(f"Checking admin access for user {user_id}")
+        if user_id != DEFAULT_ADMIN_ID:
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+            return ConversationHandler.END
+        user = get_user(user_id)
+        lang = user[0] if user else "en"
+        logger.info(f"Admin {user_id} opened view users menu with lang {lang}")
+
+        # گرفتن شماره صفحه از callback_data یا user_data
+        if query.data.startswith("page_"):
+            page = int(query.data.split("_")[1])
+            context.user_data["users_page"] = page
+        else:
+            page = int(context.user_data.get("users_page", 1))
+        logger.info(f"Fetching users for page {page}")
+
         users, total_users = get_users_paginated(page=page)
         logger.info(f"Retrieved {len(users)} users, total users: {total_users}")
         total_pages = (total_users + 4) // 5  # محاسبه تعداد صفحات (هر صفحه ۵ کاربر)
@@ -4174,14 +4174,17 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Sent user list for page {page} to admin {user_id}")
         return VIEW_USERS
     except Exception as e:
-        logger.error(f"Error in view_users for admin {user_id}: {str(e)}", exc_info=True)
-        await query.message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
-            ])
-        )
+        logger.error(f"Critical error in view_users for admin {user_id}: {str(e)}", exc_info=True)
+        try:
+            await query.message.reply_text(
+                messages[lang]["error"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
+                ])
+            )
+        except Exception as reply_error:
+            logger.error(f"Failed to send error message to admin {user_id}: {str(reply_error)}")
         return MANAGE_USERS
 
 async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
