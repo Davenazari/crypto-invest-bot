@@ -4467,7 +4467,7 @@ def main():
             CommandHandler("start", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
         ],
-        per_message=True
+        per_message=False
     )
 
     # Add handlers to the application
