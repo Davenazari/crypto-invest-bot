@@ -63,6 +63,7 @@ messages = {
             f"📆 **سود روزانه**: `{daily_profit}` تتر\n"
             f"📅 **سود هفتگی**: `{weekly_profit}` تتر\n"
             f"🗓️ **سود ماهانه**: `{monthly_profit}` تتر\n"
+            f"🌰 **بذرها**: `50 عدد` (با خرید این زمین دریافت می‌کنید)\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"🌳 **آماده خرید این زمین هستید؟**"
         ),
@@ -112,7 +113,7 @@ messages = {
         "confirmed": (
             "✅ *زمین خریداری شد!*\n"
             "زمین شما با موفقیت به مزرعه اضافه شد.\n"
-            "🌳 حالا می‌تونید هر روز بکارید و سود برداشت کنید!"
+            "🏞️ حالا می‌تونید هر روز بکارید و سود برداشت کنید!"
         ),
         "rejected": (
             "❌ *تراکنش رد شد!*\n"
@@ -127,6 +128,7 @@ messages = {
             f"🎁 **بونوس**: `0.0` تتر\n"
             f"💎 **$FMX**: `0.0`\n"
             f"🌳 **زمین‌های شما**: {seeds or 'هیچ زمینی ندارید'}\n"
+            f"🌰 **تعداد بذرها**: `{total_seeds}`\n"
             f"📈 **کل سود کسب‌شده**: `{total_profit}` تتر\n"
             f"📝 **تراکنش‌های موفق**: `{transaction_count}`\n"
             f"⏰ **آخرین تراکنش**: {'ندارد' if not last_transaction else last_transaction}\n"
@@ -223,7 +225,7 @@ messages = {
             f"👤 *کارگر: @{username}*\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"📅 *تاریخ ورود*: {join_date}\n"
-            f"🌳 *زمین‌های خریداری‌شده*:\n{seeds or 'هیچ زمینی خریداری نشده'}\n"
+            f"🏞️ *زمین‌های خریداری‌شده*:\n{seeds or 'هیچ زمینی خریداری نشده'}\n"
             f"💰 *سود کسب‌شده برای شما*: `{profit}` تتر\n"
             f"📜 *تراکنش‌ها*:\n{transactions or 'بدون تراکنش'}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
@@ -256,12 +258,12 @@ messages = {
             f"📌 برای جزئیات بیشتر، به منوی کارگرهای مزرعه برید."
         ),
         "plant_seed": (
-            "🌳 **کاشت زمین** 🌿\n"
+            "🏞️ **کاشت زمین** 🌿\n"
             "لطفاً **زمینی** که می‌خواهید امروز بکارید را انتخاب کنید:\n"
             "👇 یکی از **زمین‌های** زیر را انتخاب کنید 👇"
         ),
         "plant_success": (
-            "🌳 *زمین کاشته شد!*\n"
+            "🏞️ *زمین کاشته شد!*\n"
             "زمین شما با موفقیت کاشته شد. می‌تونید بعد از ساعت 00:00 سودش رو برداشت کنید."
         ),
         "plant_already_done": (
@@ -284,7 +286,7 @@ messages = {
             "📌 لطفاً بعد از ساعت 00:00 یا پس از کاشت زمین‌ها دوباره تلاش کنید."
         ),
         "no_seeds": (
-            "🌳 *بدون زمین*\n"
+            "🏞️ *بدون زمین*\n"
             "شما هنوز هیچ زمینی ندارید.\n"
             "📌 برای خرید زمین، به منوی مزرعه برید."
         ),
@@ -321,17 +323,17 @@ messages = {
         ),
         "manage_users_menu": "👤 *مدیریت کاربران*\nلطفاً یک گزینه انتخاب کنید:",
         "ban_user": "🚫 بن/حذف کاربر",
-        "manage_seeds": "🌳 مدیریت زمین‌ها",
+        "manage_seeds": "🏞️ مدیریت زمین‌ها",
         "manage_balance": "💰 مدیریت بالانس",
         "ask_user_id": "📋 لطفاً ID کاربر را وارد کنید (فقط عدد):",
         "invalid_user_id": "⚠️ *خطا*: ID کاربر نامعتبر است یا کاربر وجود ندارد!",
         "confirm_ban_user": lambda user_id: f"🚫 آیا مطمئن هستید که می‌خواهید کاربر {user_id} را بن کنید؟",
         "user_banned": lambda user_id: f"✅ کاربر {user_id} با موفقیت بن شد.",
-        "ask_seed_action": "🌳 *مدیریت زمین*\nلطفاً نوع عملیات را انتخاب کنید:",
+        "ask_seed_action": "🏞️ *مدیریت زمین*\nلطفاً نوع عملیات را انتخاب کنید:",
         "add_seed": "➕ اضافه کردن زمین",
         "remove_seed": "➖ حذف زمین",
-        "select_seed_to_add": "🌳 لطفاً زمین مورد نظر برای اضافه کردن را انتخاب کنید:",
-        "select_seed_to_remove": "🌳 لطفاً زمین مورد نظر برای حذف را انتخاب کنید:",
+        "select_seed_to_add": "🏞️ لطفاً زمین مورد نظر برای اضافه کردن را انتخاب کنید:",
+        "select_seed_to_remove": "🏞️ لطفاً زمین مورد نظر برای حذف را انتخاب کنید:",
         "seed_added": lambda seed_name, user_id: f"✅ زمین {seed_name} به کاربر {user_id} اضافه شد.",
         "seed_removed": lambda seed_name, user_id: f"✅ زمین {seed_name} از کاربر {user_id} حذف شد.",
         "no_seeds_to_remove": "⚠️ *خطا*: این کاربر هیچ زمینی ندارد!",
@@ -346,14 +348,14 @@ messages = {
     },
     "en": {
         "welcome": (
-            "🌟 *Welcome to the USDT Farm!* 🌳\n"
+            "🌟 *Welcome to the USDT Farm!* 🏞️\n"
             "Buy lands, plant them daily, and harvest guaranteed profits. "
             "Start by choosing a land or checking your farm!\n"
             "👇 Choose an option below 👇"
         ),
         "main_menu": "🌾 *Farm Menu*\nPlease select an option:",
         "select_seed": (
-            "🌳 **Select Land** 🌾\n"
+            "🏞️ **Select Land** 🌾\n"
             "Please choose a **land** to buy:\n"
             "👇 Pick one of the **lands** below 👇"
         ),
@@ -364,8 +366,19 @@ messages = {
             f"📆 **Daily Profit**: `{daily_profit}` USDT\n"
             f"📅 **Weekly Profit**: `{weekly_profit}` USDT\n"
             f"🗓️ **Monthly Profit**: `{monthly_profit}` USDT\n"
+            f"🌰 **Seeds**: `50` (Received with this land purchase)\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"🌳 **Ready to buy this land?**"
+        ),
+        "no_seeds_left": (
+            "⚠️ *Error*: No seeds left for this land!\n"
+            "🌰 To plant, you need to purchase a new land.\n"
+            "📌 Go to the land purchase menu."
+        ),
+        "no_seeds_left": (
+            "⚠️ *خطا*: بذرهای این زمین تمام شده است!\n"
+            "🌰 برای کاشت، باید بذر یا زمین جدیدی خریداری کنید.\n"
+            "📌 به منوی خرید زمین بروید."
         ),
         "ask_amount": (
             "💰 *Deposit for Land Purchase*\n"
@@ -413,7 +426,7 @@ messages = {
         "confirmed": (
             "✅ *Land Purchased!*\n"
             "Your land has been added to your farm.\n"
-            "🌳 You can now plant daily and harvest profits!"
+            "🏞️ You can now plant daily and harvest profits!"
         ),
         "rejected": (
             "❌ *Transaction Rejected!*\n"
@@ -428,6 +441,7 @@ messages = {
             f"🎁 **Bonus**: `0.0` USDT\n"
             f"💎 **$FMX**: `0.0`\n"
             f"🌳 **Your Lands**: {seeds or 'No lands yet'}\n"
+            f"🌰 **Total Seeds**: `{total_seeds}`\n"
             f"📈 **Total Profit Earned**: `{total_profit}` USDT\n"
             f"📝 **Successful Transactions**: `{transaction_count}`\n"
             f"⏰ **Last Transaction**: {'None' if not last_transaction else last_transaction}\n"
@@ -524,7 +538,7 @@ messages = {
             f"👤 *Worker: @{username}*\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"📅 *Join Date*: {join_date}\n"
-            f"🌳 *Purchased Lands*:\n{seeds or 'No lands purchased'}\n"
+            f"🏞️ *Purchased Lands*:\n{seeds or 'No lands purchased'}\n"
             f"💰 *Profit Earned for You*: `{profit}` USDT\n"
             f"📜 *Transactions*:\n{transactions or 'No transactions'}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
@@ -557,12 +571,12 @@ messages = {
             f"📌 Check the farm workers menu for more details."
         ),
         "plant_seed": (
-            "🌳 **Plant Land** 🌿\n"
+            "🏞️ **Plant Land** 🌿\n"
             "Please choose a **land** to plant today:\n"
             "👇 Pick one of the **lands** below 👇"
         ),
         "plant_success": (
-            "🌳 *Land Planted!*\n"
+            "🏞️ *Land Planted!*\n"
             "Your land has been successfully planted. You can harvest its profit after 00:00."
         ),
         "plant_already_done": (
@@ -585,7 +599,7 @@ messages = {
             "📌 Please try after 00:00 or after planting the lands."
         ),
         "no_seeds": (
-            "🌳 *No Lands*\n"
+            "🏞️ *No Lands*\n"
             "You don't have any lands yet.\n"
             "📌 Go to the farm menu to buy a land."
         ),
@@ -622,17 +636,17 @@ messages = {
         ),
         "manage_users_menu": "👤 *Manage Users*\nPlease select an option:",
         "ban_user": "🚫 Ban/Delete User",
-        "manage_seeds": "🌳 Manage Lands",
+        "manage_seeds": "🏞️ Manage Lands",
         "manage_balance": "💰 Manage Balance",
         "ask_user_id": "📋 Please enter the user ID (numbers only):",
         "invalid_user_id": "⚠️ *Error*: Invalid user ID or user does not exist!",
         "confirm_ban_user": lambda user_id: f"🚫 Are you sure you want to ban user {user_id}?",
         "user_banned": lambda user_id: f"✅ User {user_id} has been banned successfully.",
-        "ask_seed_action": "🌳 *Manage Lands*\nPlease select the action:",
+        "ask_seed_action": "🏞️ *Manage Lands*\nPlease select the action:",
         "add_seed": "➕ Add Land",
         "remove_seed": "➖ Remove Land",
-        "select_seed_to_add": "🌳 Please select the land to add:",
-        "select_seed_to_remove": "🌳 Please select the land to remove:",
+        "select_seed_to_add": "🏞️ Please select the land to add:",
+        "select_seed_to_remove": "🏞️ Please select the land to remove:",
         "seed_added": lambda seed_name, user_id: f"✅ Land {seed_name} added to user {user_id}.",
         "seed_removed": lambda seed_name, user_id: f"✅ Land {seed_name} removed from user {user_id}.",
         "no_seeds_to_remove": "⚠️ *Error*: This user has no lands!",
@@ -731,6 +745,14 @@ def init_db():
                     )
                 ''')
                 logger.info("Seeds table created or already exists")
+
+                # اضافه کردن ستون seed_count به جدول user_seeds
+                logger.info("Adding seed_count column to user_seeds table")
+                c.execute('''
+                    ALTER TABLE user_seeds
+                    ADD COLUMN IF NOT EXISTS seed_count INTEGER DEFAULT 50
+                ''')
+                logger.info("Successfully added seed_count column to user_seeds table")
 
                 # تعریف جدول user_seeds
                 logger.info("Creating user_seeds table if not exists")
@@ -906,11 +928,11 @@ def add_user_seed_admin(user_id, seed_id):
             with conn.cursor() as c:
                 purchase_date = datetime.now(pytz.timezone('Asia/Tehran')).isoformat()
                 c.execute('''
-                    INSERT INTO user_seeds (user_id, seed_id, purchase_date)
-                    VALUES (%s, %s, %s)
-                ''', (user_id, seed_id, purchase_date))
+                    INSERT INTO user_seeds (user_id, seed_id, purchase_date, seed_count)
+                    VALUES (%s, %s, %s, %s)
+                ''', (user_id, seed_id, purchase_date, 50))
                 conn.commit()
-                logger.info(f"Seed {seed_id} added to user {user_id} by admin")
+                logger.info(f"Seed {seed_id} added to user {user_id} by admin with 50 seeds")
     except Exception as e:
         logger.error(f"Error adding seed {seed_id} to user {user_id}: {e}")
         raise
@@ -1332,8 +1354,7 @@ def get_user_seeds(user_id):
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('''
-                    SELECT s.name, s.name_fa, s.price, s.daily_profit_rate, 
-                           us.last_planted, us.last_harvested, us.id
+                    SELECT s.seed_id, s.name, s.name_fa, s.price, s.daily_profit_rate, us.purchase_date, us.id, us.seed_count
                     FROM user_seeds us
                     JOIN seeds s ON us.seed_id = s.seed_id
                     WHERE us.user_id = %s
@@ -1444,19 +1465,19 @@ def fix_database(user_id):
         raise            
 
 def add_user_seed(user_id, seed_id):
-    """Add a seed to a user's collection."""
+    """Add a seed to a user after purchase."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                created_at = dt.datetime.now(dt.UTC).isoformat()
+                purchase_date = datetime.now(pytz.timezone('Asia/Tehran')).isoformat()
                 c.execute('''
-                    INSERT INTO user_seeds (user_id, seed_id, purchase_date)
-                    VALUES (%s, %s, %s)
-                ''', (user_id, seed_id, created_at))
+                    INSERT INTO user_seeds (user_id, seed_id, purchase_date, seed_count)
+                    VALUES (%s, %s, %s, %s)
+                ''', (user_id, seed_id, purchase_date, 50))
                 conn.commit()
-                logger.info(f"Added seed {seed_id} to user {user_id}")
+                logger.info(f"Seed {seed_id} added to user {user_id} with 50 seeds")
     except Exception as e:
-        logger.error(f"Error adding seed for user {user_id}: {e}")
+        logger.error(f"Error adding seed {seed_id} to user {user_id}: {e}")
         raise
 
 def update_seed_plant(user_id, user_seed_id):
@@ -1522,7 +1543,7 @@ def get_main_menu(lang, user_id=None):
     """🌾 Generate main menu keyboard with enhanced visuals."""
     keyboard = [
         [
-            InlineKeyboardButton("🌳 خرید زمین" if lang == "fa" else "🌳 Buy Land", callback_data="buy_seed"),
+            InlineKeyboardButton("🏞️ خرید زمین" if lang == "fa" else "🏞️ Buy Land", callback_data="buy_seed"),
             InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")
         ],
         [
@@ -1550,7 +1571,7 @@ def get_wallet_menu(lang, balance, has_seeds):
             InlineKeyboardButton("🚜 برداشت سود" if lang == "fa" else "🚜 Harvest Profit", callback_data="harvest_seed")
         ],
         [
-            InlineKeyboardButton("🌳 خرید زمین" if lang == "fa" else "🌳 Buy Land", callback_data="buy_seed"),
+            InlineKeyboardButton("🏞️ خرید زمین" if lang == "fa" else "🏞️ Buy Land", callback_data="buy_seed"),
             InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
         ],
         [
