@@ -4050,8 +4050,8 @@ async def handle_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-async def handle_seed_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle seed action selection (add/remove)."""
+async def handle_land_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle land action selection (add/remove)."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -4060,11 +4060,11 @@ async def handle_seed_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"Admin {user_id} selected seed action: {query.data}")
+    logger.info(f"Admin {user_id} selected land action: {query.data}")
 
-    if query.data in ["add_seed", "remove_seed"]:
-        context.user_data["seed_action"] = query.data
-        context.user_data["manage_action"] = "manage_seeds"  # اضافه کردن کنتکست
+    if query.data in ["add_land", "remove_land"]:
+        context.user_data["land_action"] = query.data
+        context.user_data["manage_action"] = "manage_lands"  # Context for land management
         await query.message.reply_text(
             messages[lang]["ask_user_id"],
             parse_mode="Markdown",
