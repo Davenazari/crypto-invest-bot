@@ -2607,114 +2607,129 @@ async def handle_plant_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         return ConversationHandler.END
 
-async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle seed harvesting by user."""
+async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle land selection for purchase."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
     balance = user[1] if user else 0
-    logger.info(f"User {user_id} triggered harvest seed callback: {query.data}")
+    logger.info(f"User {user_id} triggered land selection callback: {query.data}")
 
     try:
-        if query.data.startswith("harvest_"):
-            user_seed_id = int(query.data.split("_")[1])
-            user_seed = get_user_seed(user_id, user_seed_id)
-            if not user_seed:
-                logger.warning(f"User {user_id} does not own seed with user_seed_id {user_seed_id}")
+        if query.data.startswith("land_"):
+            land_idx = int(query.data.split("_")[1])
+            if land_idx < 0 or land_idx >= len(LANDS):
+                logger.warning(f"Invalid land index {land_idx} for user {user_id}")
                 await query.message.reply_text(
-                    messages[lang]["no_seed"],
-                    parse_mode="Markdown",
-                    reply_markup=get_wallet_menu(lang, balance, True)
-                )
-                return ConversationHandler.END
-
-            seed_id, last_planted, last_harvested, price, daily_profit_rate = user_seed
-            logger.info(f"Checking harvest for user {user_id}, seed_id {seed_id}, user_seed_id {user_seed_id}")
-
-            if not can_harvest_seed(last_planted, last_harvested, seed_id):
-                logger.info(f"Seed {seed_id} not ready for harvest by user {user_id}")
-                await query.message.reply_text(
-                    messages[lang]["harvest_not_ready"],
-                    parse_mode="Markdown",
-                    reply_markup=get_wallet_menu(lang, balance, True)
-                )
-                return ConversationHandler.END
-
-            profit_amount = round(price * daily_profit_rate, 3)
-            logger.info(f"Calculated profit for user {user_id}, seed_id {seed_id}: {profit_amount}")
-
-            update_seed_harvest(user_id, user_seed_id)
-            update_balance(user_id, profit_amount)
-            insert_profit(user_id, seed_id, profit_amount, "daily")
-
-            user_seeds = get_user_seeds(user_id)
-            buttons = [
-                [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"harvest_{seed[6]}")]
-                for seed in user_seeds if can_harvest_seed(seed[4], seed[5], seed_id=seed[6])
-            ]
-            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
-            await query.message.reply_text(
-                messages[lang]["harvest_success"](profit_amount),
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-            logger.info(f"Sent harvest success message to user {user_id}")
-            return HARVEST_SEED
-        elif query.data == "wallet":
-            try:
-                with psycopg2.connect(DATABASE_URL) as conn:
-                    with conn.cursor() as c:
-                        # جمع سود از جدول profits
-                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        seed_profit = c.fetchone()[0] or 0.0
-                        # جمع سود از جدول referral_profits
-                        c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
-                        referral_profit = c.fetchone()[0] or 0.0
-                        total_profit = seed_profit + referral_profit
-                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
-                        transaction_count = c.fetchone()[0]
-                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
-                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
-                        c.execute('''
-                            SELECT s.name, s.name_fa
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            WHERE us.user_id = %s
-                        ''', (user_id,))
-                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        seeds_text = ", ".join(seeds) if seeds else None
-            except psycopg2.Error as e:
-                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
-                await query.message.reply_text(
-                    messages[lang]["db_error"],
+                    messages[lang]["error"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-
+            land = LANDS[land_idx]
+            daily_profit = round(land["price"] * land["daily_profit_rate"] * land["seed_count"], 3)
+            weekly_profit = round(daily_profit * 7, 3)
+            monthly_profit = round(daily_profit * 30, 3)
+            total_monthly = round(land["price"] + monthly_profit, 3)
+            context.user_data["land_idx"] = land_idx
+            context.user_data["land_price"] = land["price"]
+            buttons = [
+                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_land_purchase")]
+            ]
+            if balance >= land["price"]:
+                buttons.insert(0, [InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
             await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
+                messages[lang]["land_info"](
+                    land["name_fa" if lang == "fa" else "name"],
+                    land["price"],
+                    daily_profit,
+                    weekly_profit,
+                    monthly_profit,
+                    total_monthly,
+                    land["seed_count"],
+                    land["emoji"]
+                ),
                 parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
+                reply_markup=InlineKeyboardMarkup(buttons)
             )
-            return ConversationHandler.END
+            return SELECT_LAND
+        elif query.data == "confirm_land_purchase":
+            land_idx = context.user_data.get("land_idx")
+            land_price = context.user_data.get("land_price")
+            if land_idx is None or land_price is None:
+                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+                await query.message.reply_text(
+                    messages[lang]["invalid_data"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            await query.message.reply_text(
+                messages[lang]["ask_amount"].format(land_price),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                ])
+            )
+            return DEPOSIT_AMOUNT
+        elif query.data == "balance_purchase":
+            land_idx = context.user_data.get("land_idx")
+            land_price = context.user_data.get("land_price")
+            if land_idx is None or land_price is None:
+                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+                await query.message.reply_text(
+                    messages[lang]["invalid_data"],
+                    parse_mode="Markdown",
+                    reply_markup=get_main_menu(lang)
+                )
+                return ConversationHandler.END
+            land = LANDS[land_idx]
+            daily_profit = round(land["price"] * land["daily_profit_rate"] * land["seed_count"], 3)
+            weekly_profit = round(daily_profit * 7, 3)
+            monthly_profit = round(daily_profit * 30, 3)
+            total_monthly = round(land["price"] + monthly_profit, 3)
+            await query.message.reply_text(
+                messages[lang]["land_info"](
+                    land["name_fa" if lang == "fa" else "name"],
+                    land["price"],
+                    daily_profit,
+                    weekly_profit,
+                    monthly_profit,
+                    total_monthly,
+                    land["seed_count"],
+                    land["emoji"]
+                ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_balance_purchase")],
+                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                ])
+            )
+            return CONFIRM_BALANCE_PURCHASE
         else:
-            logger.warning(f"Unhandled harvest seed callback data for user {user_id}: {query.data}")
+            logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, True)
+                reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
     except Exception as e:
-        logger.error(f"Error in handle_harvest_seed for user {user_id}: {e}")
+        logger.error(f"Error in handle_land_selection for user {user_id}: {e}")
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
-            reply_markup=get_wallet_menu(lang, balance, True)
+            reply_markup=get_main_menu(lang)
         )
+        await context.bot.send_message(
+            chat_id=DEFAULT_ADMIN_ID,
+            text=f"⚠️ *Error in handle_land_selection for user {user_id}*: {str(e)}",
+            parse_mode="Markdown"
+        )
+        context.user_data.clear()
         return ConversationHandler.END
     
 async def check_seeds(update: Update, context: ContextTypes.DEFAULT_TYPE):
