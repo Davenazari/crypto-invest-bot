@@ -665,10 +665,12 @@ if not DATABASE_URL:
 async def notify_admin_error(bot_token, error_message):
     """Send error notification to admin asynchronously."""
     try:
+        # پاکسازی پیام خطا از کاراکترهای مشکل‌ساز
+        safe_error_message = error_message.replace("`", "").replace("*", "").replace("_", "")
         bot = Bot(token=bot_token)
         await bot.send_message(
             chat_id=DEFAULT_ADMIN_ID,
-            text=f"⚠️ *Error*: {error_message}",
+            text=f"⚠️ *خطا*: {safe_error_message[:200]}",  # محدود کردن طول پیام
             parse_mode="Markdown"
         )
         logger.info("Successfully sent error notification to admin")
@@ -808,6 +810,42 @@ def init_db():
                         ''')
                         logger.info("Successfully added land_id column and foreign key to transactions table")
 
+                    # Create profits table
+                    logger.info("Creating profits table if not exists")
+                    c.execute('''
+                        CREATE TABLE IF NOT EXISTS profits (
+                            id SERIAL PRIMARY KEY,
+                            user_id BIGINT,
+                            land_id INTEGER,
+                            amount REAL,
+                            period TEXT,
+                            created_at TEXT,
+                            FOREIGN KEY (user_id) REFERENCES users (user_id),
+                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
+                        )
+                    ''')
+                    logger.info("Profits table created or already exists")
+
+                    # Ensure land_id column in profits
+                    logger.info("Checking for land_id column in profits table")
+                    c.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'profits' AND column_name = 'land_id'
+                    """)
+                    if not c.fetchone():
+                        logger.info("Adding land_id column to profits table")
+                        c.execute('''
+                            ALTER TABLE profits
+                            ADD COLUMN land_id INTEGER
+                        ''')
+                        c.execute('''
+                            ALTER TABLE profits
+                            ADD CONSTRAINT profits_land_id_fkey
+                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
+                        ''')
+                        logger.info("Successfully added land_id column and foreign key to profits table")
+
                     # Create referrals table
                     logger.info("Creating referrals table if not exists")
                     c.execute('''
@@ -839,22 +877,6 @@ def init_db():
                         )
                     ''')
                     logger.info("Referral_profits table created or already exists")
-
-                    # Create profits table
-                    logger.info("Creating profits table if not exists")
-                    c.execute('''
-                        CREATE TABLE IF NOT EXISTS profits (
-                            id SERIAL PRIMARY KEY,
-                            user_id BIGINT,
-                            land_id INTEGER,
-                            amount REAL,
-                            period TEXT,
-                            created_at TEXT,
-                            FOREIGN KEY (user_id) REFERENCES users (user_id),
-                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
-                        )
-                    ''')
-                    logger.info("Profits table created or already exists")
 
                     # Migrate data from seeds and user_seeds
                     logger.info("Starting data migration from seeds to lands")
@@ -888,27 +910,41 @@ def init_db():
                         ''')
                         logger.info("Successfully migrated user_seeds to user_lands")
 
-                        # Update land_id in transactions
-                        logger.info("Updating land_id in transactions table")
-                        c.execute('''
-                            UPDATE transactions t
-                            SET land_id = l.land_id
-                            FROM seeds s
-                            JOIN lands l ON s.name = l.name
-                            WHERE t.seed_id = s.seed_id
-                        ''')
-                        logger.info("Successfully updated land_id in transactions table")
+                        # Check for seed_id column in transactions
+                        c.execute("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'transactions' AND column_name = 'seed_id'
+                        """)
+                        if c.fetchone():
+                            # Update land_id in transactions
+                            logger.info("Updating land_id in transactions table")
+                            c.execute('''
+                                UPDATE transactions t
+                                SET land_id = l.land_id
+                                FROM seeds s
+                                JOIN lands l ON s.name = l.name
+                                WHERE t.seed_id = s.seed_id
+                            ''')
+                            logger.info("Successfully updated land_id in transactions table")
 
-                        # Update land_id in profits
-                        logger.info("Updating land_id in profits table")
-                        c.execute('''
-                            UPDATE profits p
-                            SET land_id = l.land_id
-                            FROM seeds s
-                            JOIN lands l ON s.name = l.name
-                            WHERE p.seed_id = s.seed_id
-                        ''')
-                        logger.info("Successfully updated land_id in profits table")
+                        # Check for seed_id column in profits
+                        c.execute("""
+                            SELECT column_name 
+                            FROM information_schema.columns 
+                            WHERE table_name = 'profits' AND column_name = 'seed_id'
+                        """)
+                        if c.fetchone():
+                            # Update land_id in profits
+                            logger.info("Updating land_id in profits table")
+                            c.execute('''
+                                UPDATE profits p
+                                SET land_id = l.land_id
+                                FROM seeds s
+                                JOIN lands l ON s.name = l.name
+                                WHERE p.seed_id = s.seed_id
+                            ''')
+                            logger.info("Successfully updated land_id in profits table")
 
                         # Drop seed_id column from transactions (if exists)
                         logger.info("Checking for seed_id column in transactions table")
