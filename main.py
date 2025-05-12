@@ -4163,6 +4163,8 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")])
         logger.info(f"Keyboard built with {len(keyboard)} rows")
 
+        # لاگ قبل از ارسال پیام
+        logger.info(f"Sending user list for page {page} to admin {user_id}")
         await query.message.reply_text(
             f"📋 *لیست کاربران (صفحه {page} از {total_pages})*\n"
             f"تعداد کل کاربران: {total_users}" if lang == "fa" else
@@ -4171,7 +4173,7 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        logger.info(f"Sent user list for page {page} to admin {user_id}")
+        logger.info(f"Successfully sent user list for page {page} to admin {user_id}")
         return VIEW_USERS
     except Exception as e:
         logger.error(f"Critical error in view_users for admin {user_id}: {str(e)}", exc_info=True)
@@ -4183,6 +4185,7 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="manage_users")]
                 ])
             )
+            logger.info(f"Sent error message to admin {user_id}")
         except Exception as reply_error:
             logger.error(f"Failed to send error message to admin {user_id}: {str(reply_error)}")
         return MANAGE_USERS
@@ -4315,7 +4318,22 @@ async def debug_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log all callback queries for debugging."""
     query = update.callback_query
     logger.info(f"Debug: Received callback query with data: {query.data} from user {query.from_user.id}")
-    await query.answer()               
+    await query.answer()     
+
+async def temp_view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Temporary handler to debug view_users callback."""
+    query = update.callback_query
+    logger.info(f"Temp view_users called with callback data: {query.data} by user {query.from_user.id}")
+    await query.answer()
+    await view_users(update, context)  # فراخوانی تابع اصلی view_users
+
+async def debug_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log current conversation state for debugging."""
+    current_state = context.user_data.get('__conversation_state', 'Unknown')
+    logger.info(f"Debug: Current conversation state for user {update.effective_user.id}: {current_state}")
+    if update.callback_query:
+        logger.info(f"Debug: Handling callback query with data: {update.callback_query.data} in state {current_state}")
+    return current_state              
 
 def main():
     """Run the bot."""
@@ -4427,6 +4445,7 @@ def main():
             MANAGE_USERS: [
                 CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
+                CallbackQueryHandler(view_users, pattern=r"^view_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             VIEW_USERS: [
@@ -4475,6 +4494,7 @@ def main():
             CommandHandler("cancel", cancel),
             CommandHandler("start", cancel),
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_unexpected_message),
+            CallbackQueryHandler(debug_conversation),
         ],
         per_message=False
     )
@@ -4501,6 +4521,9 @@ def main():
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
     app.add_handler(CommandHandler("debug_balance", debug_balance))
     app.add_handler(CallbackQueryHandler(debug_callback))
+    app.add_handler(CallbackQueryHandler(debug_callback))
+    app.add_handler(CallbackQueryHandler(temp_view_users, pattern=r"^view_users$"))
+    app.add_handler(conv_handler)
 
     # Start the bot
     logger.info("Starting bot")
