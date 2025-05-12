@@ -1518,6 +1518,30 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
     return now.date() > last_planted_dt.date()
 
 # Menu generation
+def get_main_menu(lang, user_id=None):
+    """🌾 Generate main menu keyboard with enhanced visuals."""
+    keyboard = [
+        [
+            InlineKeyboardButton("🏞️ خرید زمین" if lang == "fa" else "🏞️ Buy Land", callback_data="buy_seed"),
+            InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")
+        ],
+        [
+            InlineKeyboardButton("🤝 دعوت کارگر" if lang == "fa" else "🤝 Invite Workers", callback_data="referral"),
+            InlineKeyboardButton("🌐 زبان" if lang == "fa" else "🌐 Language", callback_data="language")
+        ],
+        [
+            InlineKeyboardButton("📩 پشتیبانی" if lang == "fa" else "📩 Support", callback_data="support")
+        ]
+    ]
+    # اضافه کردن دکمه مدیریت کاربران فقط برای ادمین
+    if user_id == DEFAULT_ADMIN_ID:
+        keyboard.append(
+            [
+                InlineKeyboardButton("👤 مدیریت کاربران" if lang == "fa" else "👤 Manage Users", callback_data="manage_users")
+            ]
+        )
+    return InlineKeyboardMarkup(keyboard)
+
 def get_wallet_menu(lang, balance, has_seeds):
     """Generate wallet menu keyboard."""
     buttons = [
@@ -1535,36 +1559,6 @@ def get_wallet_menu(lang, balance, has_seeds):
     ]
     buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
     return InlineKeyboardMarkup(buttons)
-
-def get_wallet_menu(lang):
-    """Generate the wallet menu keyboard."""
-    keyboard = [
-        [InlineKeyboardButton(
-            f"🚜 {'برداشت سود' if lang == 'fa' else 'Harvest Profits'}",
-            callback_data="withdraw"
-        )],
-        [InlineKeyboardButton(
-            f"🌿 {'کاشت' if lang == 'fa' else 'Plant'}",
-            callback_data="plant_seed"
-        )],
-        [InlineKeyboardButton(
-            f"💰 {'برداشت سود' if lang == 'fa' else 'Harvest Profit'}",
-            callback_data="harvest_seed"
-        )],
-        [InlineKeyboardButton(
-            f"🏞️ {'خرید زمین جدید' if lang == 'fa' else 'Buy New Land'}",
-            callback_data="buy_seed"
-        )],
-        [InlineKeyboardButton(
-            f"📜 {'تاریخچه' if lang == 'fa' else 'History'}",
-            callback_data="history"
-        )],
-        [InlineKeyboardButton(
-            f"🔙 {'بازگشت' if lang == 'fa' else 'Back'}",
-            callback_data="back_to_menu"
-        )],
-    ]
-    return InlineKeyboardMarkup(keyboard)
 
 def get_referral_menu(lang, referrals):
     buttons = [
