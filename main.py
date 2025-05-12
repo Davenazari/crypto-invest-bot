@@ -35,7 +35,7 @@ langs = {"فارسی": "fa", "English": "en"}
 SEEDS = [
     {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.04, "emoji": "🍅"},
     {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.043333, "emoji": "🥒"},
-    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.042, "emoji": "🍊"},
+    {"name": "Orange", "name_fa": "پرتقال", "price": 50, "daily_profit_rate": 0.042, "emoji": "🍊"},
     {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0375, "emoji": "🍎"},
     {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.034375, "emoji": "🍌"},
     {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.036364, "emoji": "🥭"},
