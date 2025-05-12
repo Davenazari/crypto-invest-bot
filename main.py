@@ -1733,13 +1733,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 def get_seed_selection_menu(lang):
-    """🌱 Generate seed selection keyboard with emojis."""
-    buttons = [
-        [InlineKeyboardButton(f"{seed['emoji']} {seed['name_fa' if lang == 'fa' else 'name']}", callback_data=f"seed_{idx}")]
-        for idx, seed in enumerate(SEEDS)
+    """Generate the seed selection menu."""
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"{land['name_fa' if lang == 'fa' else 'name']} {land['emoji']} - {land['price']} USDT",
+                callback_data=f"seed_{idx}"
+            )
+        ]
+        for idx, land in enumerate(LANDS)
     ]
-    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
-    return InlineKeyboardMarkup(buttons)
+    keyboard.append([
+        InlineKeyboardButton(
+            "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+            callback_data="back_to_menu"
+        )
+    ])
+    return InlineKeyboardMarkup(keyboard)
 
 async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
       """Handle language selection callbacks."""
@@ -1804,7 +1814,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     try:
         if query.data == "buy_seed":
-            context.user_data.clear()
+            logger.debug(f"User {user_id} selected buy_seed")
+            context.user_data.clear()  # Clear user data to avoid conflicts
             await query.message.reply_text(
                 messages[lang]["select_seed"],
                 parse_mode="Markdown",
@@ -1812,6 +1823,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return SELECT_SEED
         elif query.data == "wallet":
+            logger.debug(f"User {user_id} selected wallet")
             try:
                 with psycopg2.connect(DATABASE_URL) as conn:
                     with conn.cursor() as c:
@@ -1845,6 +1857,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return ConversationHandler.END
         elif query.data == "plant_seed":
+            logger.debug(f"User {user_id} selected plant_seed")
             user_seeds = get_user_seeds(user_id)
             if not user_seeds:
                 await query.message.reply_text(
@@ -1872,6 +1885,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return PLANT_SEED
         elif query.data == "harvest_seed":
+            logger.debug(f"User {user_id} selected harvest_seed")
             user_seeds = get_user_seeds(user_id)
             if not user_seeds:
                 await query.message.reply_text(
@@ -1899,6 +1913,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return HARVEST_SEED
         elif query.data == "withdraw":
+            logger.debug(f"User {user_id} selected withdraw")
             balance = user[1] if user else 0
             await query.message.reply_text(
                 messages[lang]["ask_withdraw_amount"],
@@ -1909,6 +1924,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return WITHDRAW_AMOUNT
         elif query.data == "history":
+            logger.debug(f"User {user_id} selected history")
             try:
                 transactions = get_transaction_history(user_id)
                 if not transactions:
@@ -1973,6 +1989,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return ConversationHandler.END
         elif query.data == "referral":
+            logger.debug(f"User {user_id} selected referral")
             try:
                 level1, level2, level3, total_profit, transactions, referrals = get_referral_stats(user_id)
                 bot = telegram.Bot(token=os.getenv("BOT_TOKEN"))
@@ -2032,6 +2049,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return ConversationHandler.END
         elif query.data.startswith("referral_") and query.data != "referral":
+            logger.debug(f"User {user_id} selected referral details: {query.data}")
             try:
                 referred_id = int(query.data.split("_")[1])
                 details = get_referral_details(user_id, referred_id, lang)
@@ -2063,6 +2081,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return ConversationHandler.END
         elif query.data == "support":
+            logger.debug(f"User {user_id} selected support")
             await query.message.reply_text(
                 messages[lang]["support"],
                 parse_mode="Markdown",
@@ -2072,6 +2091,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return ConversationHandler.END
         elif query.data == "language":
+            logger.debug(f"User {user_id} selected language")
             await query.message.reply_text(
                 messages[lang]["language_menu"],
                 parse_mode="Markdown",
@@ -2079,6 +2099,7 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return ConversationHandler.END
         elif query.data == "back_to_menu":
+            logger.debug(f"User {user_id} selected back_to_menu")
             context.user_data.clear()
             await query.message.reply_text(
                 messages[lang]["main_menu"],
@@ -2150,34 +2171,70 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
-    lang = user[0] if user else "en"
-    balance = user[1] if user else 0
+    if not user:
+        logger.error(f"Failed to retrieve or create user {user_id}")
+        await query.message.reply_text(
+            messages["en"]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu("en")
+        )
+        return ConversationHandler.END
+    lang, balance = user
     logger.info(f"User {user_id} triggered land selection callback: {query.data}")
 
     try:
         if query.data.startswith("seed_"):
-            land_idx = int(query.data.split("_")[1])
-            if land_idx < 0 or land_idx >= len(LANDS):
-                logger.warning(f"Invalid land index {land_idx} for user {user_id}")
+            logger.debug(f"User {user_id} selected land with callback: {query.data}")
+            try:
+                land_idx = int(query.data.split("_")[1])
+                if land_idx < 0 or land_idx >= len(LANDS):
+                    logger.warning(f"Invalid land index {land_idx} for user {user_id}")
+                    await query.message.reply_text(
+                        messages[lang]["error"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+                land = LANDS[land_idx]
+            except (ValueError, IndexError) as e:
+                logger.error(f"Error parsing land index for user {user_id}: {e}")
                 await query.message.reply_text(
                     messages[lang]["error"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-            land = LANDS[land_idx]
+
             daily_profit = round(land["price"] * land["daily_profit_rate"], 3)
             weekly_profit = round(daily_profit * 7, 3)
             monthly_profit = round(daily_profit * 30, 3)
             total_monthly = round(land["price"] + monthly_profit, 3)
+            
             context.user_data["land_idx"] = land_idx
             context.user_data["land_price"] = land["price"]
+            context.user_data["land_name"] = land["name_fa" if lang == "fa" else "name"]
+            context.user_data["land_emoji"] = land["emoji"]
+
             buttons = [
-                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_land_purchase")]
+                [InlineKeyboardButton(
+                    "💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit",
+                    callback_data="confirm_land_purchase"
+                )]
             ]
             if balance >= land["price"]:
-                buttons.insert(0, [InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
-            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
+                buttons.insert(0, [
+                    InlineKeyboardButton(
+                        "💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance",
+                        callback_data="balance_purchase"
+                    )
+                ])
+            buttons.append([
+                InlineKeyboardButton(
+                    "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+                    callback_data="back_to_menu"
+                )
+            ])
+
             await query.message.reply_text(
                 messages[lang]["seed_info"](
                     land["name_fa" if lang == "fa" else "name"],
@@ -2192,7 +2249,9 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
             return SELECT_SEED
+
         elif query.data == "confirm_land_purchase":
+            logger.debug(f"User {user_id} selected confirm_land_purchase")
             land_idx = context.user_data.get("land_idx")
             land_price = context.user_data.get("land_price")
             if land_idx is None or land_price is None:
@@ -2203,47 +2262,66 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
+
             await query.message.reply_text(
                 messages[lang]["ask_amount"].format(land_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                    [InlineKeyboardButton(
+                        "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+                        callback_data="back_to_menu"
+                    )]
                 ])
             )
             return DEPOSIT_AMOUNT
+
         elif query.data == "balance_purchase":
+            logger.debug(f"User {user_id} selected balance_purchase")
             land_idx = context.user_data.get("land_idx")
             land_price = context.user_data.get("land_price")
-            if land_idx is None or land_price is None:
-                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+            land_name = context.user_data.get("land_name")
+            land_emoji = context.user_data.get("land_emoji")
+            if land_idx is None or land_price is None or land_name is None:
+                logger.warning(f"Missing land_idx, land_price, or land_name for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
+
             land = LANDS[land_idx]
             daily_profit = round(land["price"] * land["daily_profit_rate"], 3)
             weekly_profit = round(daily_profit * 7, 3)
             monthly_profit = round(daily_profit * 30, 3)
             total_monthly = round(land["price"] + monthly_profit, 3)
+
             await query.message.reply_text(
                 messages[lang]["seed_info"](
-                    land["name_fa" if lang == "fa" else "name"],
+                    land_name,
                     land["price"],
                     daily_profit,
                     weekly_profit,
                     monthly_profit,
                     total_monthly,
-                    land["emoji"]
-                ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
+                    land_emoji
+                ) + "\n\n" + (
+                    "تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"
+                ),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_balance_purchase")],
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
+                    [InlineKeyboardButton(
+                        "✅ تأیید" if lang == "fa" else "✅ Confirm",
+                        callback_data="confirm_balance_purchase"
+                    )],
+                    [InlineKeyboardButton(
+                        "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+                        callback_data="back_to_menu"
+                    )]
                 ])
             )
             return CONFIRM_BALANCE_PURCHASE
+
         else:
             logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
@@ -2252,6 +2330,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 reply_markup=get_main_menu(lang)
             )
             return ConversationHandler.END
+
     except Exception as e:
         logger.error(f"Error in handle_seed_selection for user {user_id}: {e}")
         await query.message.reply_text(
