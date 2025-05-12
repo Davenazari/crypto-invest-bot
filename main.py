@@ -824,7 +824,7 @@ def init_db():
                 seed_count = c.fetchone()[0]
                 if seed_count == 0:
                     logger.info("Populating seeds table")
-                    for seed in LANDS:  # اصلاح: استفاده از LANDS به جای SEEDS
+                    for seed in SEEDS:
                         c.execute('''
                             INSERT INTO seeds (name, name_fa, price, daily_profit_rate)
                             VALUES (%s, %s, %s, %s)
@@ -832,7 +832,7 @@ def init_db():
                     logger.info("Successfully populated seeds table")
                 else:
                     logger.info("Updating seeds table with new daily_profit_rate")
-                    for seed in LANDS:  # اصلاح: استفاده از LANDS به جای SEEDS
+                    for seed in SEEDS:
                         c.execute('''
                             UPDATE seeds
                             SET daily_profit_rate = %s
@@ -865,14 +865,8 @@ def init_db():
     except Exception as e:
         logger.error(f"Error initializing database: {str(e)}", exc_info=True)
         bot_token = os.getenv("BOT_TOKEN")
-        if bot_token:
-            try:
-                # استفاده از asyncio.run برای اجرای تابع async در محیط غیرهمزمان
-                asyncio.run(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
-            except Exception as notify_error:
-                logger.error(f"Failed to send admin notification: {notify_error}")
-        else:
-            logger.error("BOT_TOKEN not found, cannot notify admin")
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
         raise
 
 def fix_users_table():
