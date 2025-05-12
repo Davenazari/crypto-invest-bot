@@ -2907,7 +2907,7 @@ async def handle_deposit_txid(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ConversationHandler.END
 
     try:
-        seed = SEEDS[seed_idx]
+        seed = LANDS[seed_idx]
         message_id = update.message.message_id
         
         # Insert transaction
