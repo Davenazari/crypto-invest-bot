@@ -2692,7 +2692,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.effective_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    seed_price = context.user_data.get("seed_price")
+    land_price = context.user_data.get("land_price")
     input_text = update.message.text.strip()
     logger.info(f"User {user_id} entered deposit amount: '{input_text}'")
 
