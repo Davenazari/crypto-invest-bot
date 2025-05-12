@@ -4512,10 +4512,6 @@ def main():
     logger.info("Building Telegram application")
     app = ApplicationBuilder().token(token).build()
 
-    # Run fix_database for user 5664533861 at startup
-    logger.info("Running fix_database for user 5664533861")
-    fix_database(5664533861)
-    logger.info("Ran fix_database for user 5664533861")
 
     # Define conversation handler
     conv_handler = ConversationHandler(
