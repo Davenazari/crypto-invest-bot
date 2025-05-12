@@ -788,6 +788,26 @@ def init_db():
                     ''')
                     logger.info("Transactions table created or already exists")
 
+                    # Ensure land_id column in transactions
+                    logger.info("Checking for land_id column in transactions table")
+                    c.execute("""
+                        SELECT column_name 
+                        FROM information_schema.columns 
+                        WHERE table_name = 'transactions' AND column_name = 'land_id'
+                    """)
+                    if not c.fetchone():
+                        logger.info("Adding land_id column to transactions table")
+                        c.execute('''
+                            ALTER TABLE transactions
+                            ADD COLUMN land_id INTEGER
+                        ''')
+                        c.execute('''
+                            ALTER TABLE transactions
+                            ADD CONSTRAINT transactions_land_id_fkey
+                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
+                        ''')
+                        logger.info("Successfully added land_id column and foreign key to transactions table")
+
                     # Create referrals table
                     logger.info("Creating referrals table if not exists")
                     c.execute('''
@@ -949,41 +969,21 @@ def init_db():
                             ''', (land["daily_profit_rate"], land["seed_count"], land["name"]))
                         logger.info("Successfully updated daily_profit_rate and seed_count in lands table")
 
-                    # Ensure land_id column in transactions
-                    logger.info("Checking for land_id column in transactions table")
-                    c.execute("""
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name = 'transactions' AND column_name = 'land_id'
-                    """)
-                    if not c.fetchone():
-                        logger.info("Adding land_id column to transactions table")
-                        c.execute('''
-                            ALTER TABLE transactions
-                            ADD COLUMN land_id INTEGER
-                        ''')
-                        c.execute('''
-                            ALTER TABLE transactions
-                            ADD CONSTRAINT transactions_land_id_fkey
-                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
-                        ''')
-                        logger.info("Successfully added land_id column and foreign key to transactions table")
-
                     conn.commit()
                     logger.info("Database initialized, data migrated, and lands updated successfully")
             except Exception as e:
                 conn.rollback()
-                logger.error(f"Error initializing database: {str(e)}", exc_info=True)
+                logger.error(f"خطا در مقداردهی اولیه پایگاه داده: {str(e)}", exc_info=True)
                 bot_token = os.getenv("BOT_TOKEN")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
+                loop.run_until_complete(notify_admin_error(bot_token, f"خطا در مقداردهی اولیه پایگاه داده: {str(e)}"))
                 loop.close()
                 raise
             finally:
                 conn.autocommit = True
     except Exception as e:
-        logger.error(f"Error connecting to database: {str(e)}", exc_info=True)
+        logger.error(f"خطا در اتصال به پایگاه داده: {str(e)}", exc_info=True)
         raise
 
 def fix_users_table():
