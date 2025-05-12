@@ -4,7 +4,7 @@ import psycopg2
 import asyncio
 from datetime import datetime, timedelta
 import datetime as dt
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -31,14 +31,14 @@ DEFAULT_ADMIN_ID = 536587863  # Changed to integer
 # Supported languages
 langs = {"فارسی": "fa", "English": "en"}
 
-# 🌱 **لیست زمین‌های مزرعه** 🌾
-LANDS = [
-    {"name": "Tomato Land", "name_fa": "زمین گوجه", "price": 15, "daily_profit_rate": 0.04, "emoji": "🍅"},
-    {"name": "Cucumber Land", "name_fa": "زمین خیار", "price": 30, "daily_profit_rate": 0.043333, "emoji": "🥒"},
-    {"name": "Orange Land", "name_fa": "زمین پرتغال", "price": 50, "daily_profit_rate": 0.042, "emoji": "🍊"},
-    {"name": "Apple Land", "name_fa": "زمین سیب", "price": 120, "daily_profit_rate": 0.0375, "emoji": "🍎"},
-    {"name": "Banana Land", "name_fa": "زمین موز", "price": 320, "daily_profit_rate": 0.034375, "emoji": "🍌"},
-    {"name": "Mango Land", "name_fa": "زمین انبه", "price": 550, "daily_profit_rate": 0.036364, "emoji": "🥭"},
+# 🌱 **لیست بذرهای مزرعه** 🌾
+SEEDS = [
+    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.04, "emoji": "🍅"},
+    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.043333, "emoji": "🥒"},
+    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.042, "emoji": "🍊"},
+    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0375, "emoji": "🍎"},
+    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.034375, "emoji": "🍌"},
+    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.036364, "emoji": "🥭"},
 ]
 
 # Localized messages
@@ -46,30 +46,29 @@ messages = {
     "fa": {
         "welcome": (
             "🌟 *خوش اومدید به مزرعه USDT!* 🌱\n"
-            "اینجا می‌تونید زمین بخرید و با هر زمین 50 بذر دریافت کنید، هر روز بکارید و سود تضمین‌شده برداشت کنید. "
-            "برای شروع، یک زمین انتخاب کنید یا مزرعه خودتون رو بررسی کنید!\n"
+            "اینجا می‌تونید بذر میوه بخرید، هر روز بکارید و سود تضمین‌شده برداشت کنید. "
+            "برای شروع، یک بذر انتخاب کنید یا مزرعه خودتون رو بررسی کنید!\n"
             "👇 گزینه مورد نظرتون رو انتخاب کنید 👇"
         ),
         "main_menu": "🌾 *منوی مزرعه*\nلطفاً یک گزینه انتخاب کنید:",
         "select_seed": (
-            "🌱 **انتخاب زمین** 🌾\n"
-            "لطفاً **زمین** مورد نظر برای خرید را انتخاب کنید (با هر زمین 50 بذر دریافت می‌کنید):\n"
-            "👇 از **زمین‌های** زیر یکی را انتخاب کنید 👇"
+            "🌱 **انتخاب بذر** 🌾\n"
+            "لطفاً **بذر** مورد نظر برای خرید را انتخاب کنید:\n"
+            "👇 از **بذرهای** زیر یکی را انتخاب کنید 👇"
         ),
         "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, emoji: (
-            f"🌾 **زمین {name}** {emoji}\n"
+            f"🌾 **بذر {name}** {emoji}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"💰 **قیمت**: `{price}` تتر\n"
-            f"🎁 **بذرها**: 50 بذر رایگان\n"
             f"📆 **سود روزانه**: `{daily_profit}` تتر\n"
             f"📅 **سود هفتگی**: `{weekly_profit}` تتر\n"
             f"🗓️ **سود ماهانه**: `{monthly_profit}` تتر\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"🌱 **آماده خرید این زمین هستید؟**"
+            f"🌱 **آماده خرید این بذر هستید؟**"
         ),
         "ask_amount": (
-            "💰 *واریز برای خرید زمین*\n"
-            "لطفاً مقدار دقیق قیمت زمین ({}) تتر رو واریز کنید:\n"
+            "💰 *واریز برای خرید بذر*\n"
+            "لطفاً مقدار دقیق قیمت بذر ({}) تتر رو واریز کنید:\n"
             "📌 عدد معتبر وارد کنید."
         ),
         "choose_network": (
@@ -88,7 +87,7 @@ messages = {
             "لطفاً *TXID* تراکنش یا *اسکرین‌شات* واریز خودتون رو ارسال کنید:\n"
             "📌 TXID رو کپی کنید یا تصویر واضحی ارسال کنید."
         ),
-        "invalid_amount": "⚠️ *خطا*: مقدار واردشده معتبر نیست!\nلطفاً قیمت دقیق زمین ({}) تتر رو وارد کنید.",
+        "invalid_amount": "⚠️ *خطا*: مقدار واردشده معتبر نیست!\nلطفاً قیمت دقیق بذر ({}) تتر رو وارد کنید.",
         "success": (
             "🎉 *واریز ثبت شد!*\n"
             "تراکنش شما با موفقیت ثبت شد.\n"
@@ -111,8 +110,8 @@ messages = {
         ),
         "cancel": "🛑 *عملیات لغو شد*\nبرای بازگشت به منوی مزرعه، /start رو وارد کنید.",
         "confirmed": (
-            "✅ *زمین خریداری شد!*\n"
-            "زمین شما با موفقیت به مزرعه اضافه شد و 50 بذر دریافت کردید.\n"
+            "✅ *بذر خریداری شد!*\n"
+            "بذر شما با موفقیت به مزرعه اضافه شد.\n"
             "🌱 حالا می‌تونید هر روز بکارید و سود برداشت کنید!"
         ),
         "rejected": (
@@ -127,12 +126,12 @@ messages = {
             f"💰 **موجودی**: `{balance}` تتر\n"
             f"🎁 **بونوس**: `0.0` تتر\n"
             f"💎 **$FMX**: `0.0`\n"
-            f"🌱 **زمین‌های شما**: {seeds or 'هیچ زمینی ندارید'}\n"
+            f"🌱 **بذرهای شما**: {seeds or 'هیچ بذری ندارید'}\n"
             f"📈 **کل سود کسب‌شده**: `{total_profit}` تتر\n"
             f"📝 **تراکنش‌های موفق**: `{transaction_count}`\n"
             f"⏰ **آخرین تراکنش**: {'ندارد' if not last_transaction else last_transaction}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"📌 برای **کاشت**، **برداشت** یا **خرید زمین جدید**، گزینه‌های زیر را انتخاب کنید."
+            f"📌 برای **کاشت**، **برداشت** یا **خرید بذر جدید**، گزینه‌های زیر را انتخاب کنید."
         ),
         "withdraw": "🚜 *برداشت سود*",
         "ask_withdraw_amount": (
@@ -195,12 +194,12 @@ messages = {
             f"────────────────────\n"
             f"{transactions}\n"
             f"────────────────────\n"
-            f"📌 برای خرید زمین یا برداشت، به منوی مزرعه برید."
+            f"📌 برای خرید بذر یا برداشت، به منوی مزرعه برید."
         ),
         "no_history": (
             "📜 *بدون تاریخچه*\n"
             "هنوز هیچ تراکنشی ثبت نشده.\n"
-            "📌 برای خرید زمین، به منوی مزرعه برید."
+            "📌 برای خرید بذر، به منوی مزرعه برید."
         ),
         "unauthorized": (
             "🚫 *خطا*: شما اجازه دسترسی به این دستور رو ندارید!\n"
@@ -224,7 +223,7 @@ messages = {
             f"👤 *کارگر: @{username}*\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"📅 *تاریخ ورود*: {join_date}\n"
-            f"🌱 *زمین‌های خریداری‌شده*:\n{seeds or 'هیچ زمینی خریداری نشده'}\n"
+            f"🌱 *بذرهای خریداری‌شده*:\n{seeds or 'هیچ بذری خریداری نشده'}\n"
             f"💰 *سود کسب‌شده برای شما*: `{profit}` تتر\n"
             f"📜 *تراکنش‌ها*:\n{transactions or 'بدون تراکنش'}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
@@ -257,23 +256,23 @@ messages = {
             f"📌 برای جزئیات بیشتر، به منوی کارگرهای مزرعه برید."
         ),
         "plant_seed": (
-            "🌱 **کاشت در زمین** 🌿\n"
-            "لطفاً **زمین** مورد نظر برای کاشت امروز را انتخاب کنید:\n"
-            "👇 یکی از **زمین‌های** زیر را انتخاب کنید 👇"
+            "🌱 **کاشت بذر** 🌿\n"
+            "لطفاً **بذری** که می‌خواهید امروز بکارید را انتخاب کنید:\n"
+            "👇 یکی از **بذرهای** زیر را انتخاب کنید 👇"
         ),
         "plant_success": (
-            "🌱 *کاشت انجام شد!*\n"
-            "زمین شما با موفقیت کاشته شد. می‌تونید بعد از ساعت 00:00 سودش رو برداشت کنید."
+            "🌱 *بذر کاشته شد!*\n"
+            "بذر شما با موفقیت کاشته شد. می‌تونید بعد از ساعت 00:00 سودش رو برداشت کنید."
         ),
         "plant_already_done": (
-            "⚠️ *خطا*: این زمین امروز کاشته شده!\n"
-            "هر زمین رو فقط یک‌بار در روز می‌تونید بکارید.\n"
-            "📌 فردا دوباره تلاش کنید یا زمین‌های دیگه‌ای بکارید."
+            "⚠️ *خطا*: این بذرها امروز کاشته شدن!\n"
+            "هر بذر رو فقط یک‌بار در روز می‌تونید بکارید.\n"
+            "📌 فردا دوباره تلاش کنید یا بذرهای دیگه‌ای بکارید."
         ),
         "harvest_seed": (
             "🚜 **برداشت سود** 💰\n"
-            "لطفاً **زمین** مورد نظر برای برداشت سود را انتخاب کنید:\n"
-            "👇 یکی از **زمین‌های** زیر را انتخاب کنید 👇"
+            "لطفاً **بذری** که می‌خواهید **سودش** را برداشت کنید انتخاب کنید:\n"
+            "👇 یکی از **بذرهای** زیر را انتخاب کنید 👇"
         ),
         "harvest_success": lambda amount: (
             f"🎉 *سود برداشت شد!*\n"
@@ -281,22 +280,22 @@ messages = {
             f"📌 سود به موجودی مزرعه‌تون اضافه شد."
         ),
         "harvest_not_ready": (
-            "⚠️ *خطا*: هنوز نمی‌تونید سود این زمین رو برداشت کنید!\n"
-            "📌 لطفاً بعد از ساعت 00:00 یا پس از کاشت دوباره تلاش کنید."
+            "⚠️ *خطا*: هنوز نمی‌تونید سود این بذرها رو برداشت کنید!\n"
+            "📌 لطفاً بعد از ساعت 00:00 یا پس از کاشت بذرها دوباره تلاش کنید."
         ),
         "no_seeds": (
-            "🌱 *بدون زمین*\n"
-            "شما هنوز هیچ زمینی ندارید.\n"
-            "📌 برای خرید زمین، به منوی مزرعه برید."
+            "🌱 *بدون بذر*\n"
+            "شما هنوز هیچ بذری ندارید.\n"
+            "📌 برای خرید بذر، به منوی مزرعه برید."
         ),
         "db_test_success": (
             "✅ *تست دیتابیس موفق!*\n"
-            "اتصال به دیتابیس برقرار است و جدول زمین‌ها پر شده است.\n"
-            "تعداد زمین‌ها: {}"
+            "اتصال به دیتابیس برقرار است و جدول بذرها پر شده است.\n"
+            "تعداد بذرها: {}"
         ),
         "db_test_failed": (
             "❌ *تست دیتابیس ناموفق!*\n"
-            "مشکل در اتصال به دیتابیس یا جدول زمین‌ها خالی است.\n"
+            "مشکل در اتصال به دیتابیس یا جدول بذرها خالی است.\n"
             "جزئیات خطا: {}"
         ),
         "admin_test_success": (
@@ -309,12 +308,12 @@ messages = {
             "جزئیات خطا: {}"
         ),
         "no_seed": (
-            "⚠️ *خطا*: این زمین متعلق به شما نیست!\n"
-            "📌 لطفاً زمین دیگری انتخاب کنید یا به منوی مزرعه برگردید."
+            "⚠️ *خطا*: این بذر متعلق به شما نیست!\n"
+            "📌 لطفاً بذر دیگری انتخاب کنید یا به منوی مزرعه برگردید."
         ),
         "seed_not_planted": (
-            "⚠️ *خطا*: این زمین هنوز کاشته نشده!\n"
-            "📌 لطفاً ابتدا زمین رو بکارید."
+            "⚠️ *خطا*: این بذر هنوز کاشته نشده!\n"
+            "📌 لطفاً ابتدا بذر رو بکارید."
         ),
         "no_profit": (
             "⚠️ *خطا*: هیچ سودی برای برداشت وجود نداره!\n"
@@ -322,20 +321,20 @@ messages = {
         ),
         "manage_users_menu": "👤 *مدیریت کاربران*\nلطفاً یک گزینه انتخاب کنید:",
         "ban_user": "🚫 بن/حذف کاربر",
-        "manage_seeds": "🌱 مدیریت زمین‌ها",
+        "manage_seeds": "🌱 مدیریت بذرها",
         "manage_balance": "💰 مدیریت بالانس",
         "ask_user_id": "📋 لطفاً ID کاربر را وارد کنید (فقط عدد):",
         "invalid_user_id": "⚠️ *خطا*: ID کاربر نامعتبر است یا کاربر وجود ندارد!",
         "confirm_ban_user": lambda user_id: f"🚫 آیا مطمئن هستید که می‌خواهید کاربر {user_id} را بن کنید؟",
         "user_banned": lambda user_id: f"✅ کاربر {user_id} با موفقیت بن شد.",
-        "ask_seed_action": "🌱 *مدیریت زمین*\nلطفاً نوع عملیات را انتخاب کنید:",
-        "add_seed": "➕ اضافه کردن زمین",
-        "remove_seed": "➖ حذف زمین",
-        "select_seed_to_add": "🌱 لطفاً زمین مورد نظر برای اضافه کردن را انتخاب کنید:",
-        "select_seed_to_remove": "🌱 لطفاً زمین مورد نظر برای حذف را انتخاب کنید:",
-        "seed_added": lambda seed_name, user_id: f"✅ زمین {seed_name} به کاربر {user_id} اضافه شد.",
-        "seed_removed": lambda seed_name, user_id: f"✅ زمین {seed_name} از کاربر {user_id} حذف شد.",
-        "no_seeds_to_remove": "⚠️ *خطا*: این کاربر هیچ زمینی ندارد!",
+        "ask_seed_action": "🌱 *مدیریت بذر*\nلطفاً نوع عملیات را انتخاب کنید:",
+        "add_seed": "➕ اضافه کردن بذر",
+        "remove_seed": "➖ حذف بذر",
+        "select_seed_to_add": "🌱 لطفاً بذر مورد نظر برای اضافه کردن را انتخاب کنید:",
+        "select_seed_to_remove": "🌱 لطفاً بذر مورد نظر برای حذف را انتخاب کنید:",
+        "seed_added": lambda seed_name, user_id: f"✅ بذر {seed_name} به کاربر {user_id} اضافه شد.",
+        "seed_removed": lambda seed_name, user_id: f"✅ بذر {seed_name} از کاربر {user_id} حذف شد.",
+        "no_seeds_to_remove": "⚠️ *خطا*: این کاربر هیچ بذری ندارد!",
         "ask_balance_action": "💰 *مدیریت بالانس*\nلطفاً نوع عملیات را انتخاب کنید:",
         "add_balance": "➕ افزایش بالانس",
         "subtract_balance": "➖ کاهش بالانس",
@@ -348,30 +347,29 @@ messages = {
     "en": {
         "welcome": (
             "🌟 *Welcome to the USDT Farm!* 🌱\n"
-            "Buy lands and receive 50 seeds with each, plant daily, and harvest guaranteed profits. "
-            "Start by choosing a land or checking your farm!\n"
+            "Buy fruit seeds, plant them daily, and harvest guaranteed profits. "
+            "Start by choosing a seed or checking your farm!\n"
             "👇 Choose an option below 👇"
         ),
         "main_menu": "🌾 *Farm Menu*\nPlease select an option:",
         "select_seed": (
-            "🌱 **Select Land** 🌾\n"
-            "Please choose a **land** to buy (includes 50 seeds):\n"
-            "👇 Pick one of the **lands** below 👇"
+            "🌱 **Select Seed** 🌾\n"
+            "Please choose a **seed** to buy:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
         "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, emoji: (
-            f"🌾 **{name} Land** {emoji}\n"
+            f"🌾 **{name} Seed** {emoji}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"💰 **Price**: `{price}` USDT\n"
-            f"🎁 **Seeds**: 50 seeds included\n"
             f"📆 **Daily Profit**: `{daily_profit}` USDT\n"
             f"📅 **Weekly Profit**: `{weekly_profit}` USDT\n"
             f"🗓️ **Monthly Profit**: `{monthly_profit}` USDT\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"🌱 **Ready to buy this land?**"
+            f"🌱 **Ready to buy this seed?**"
         ),
         "ask_amount": (
-            "💰 *Deposit for Land Purchase*\n"
-            "Please deposit the exact land price ({}) USDT:\n"
+            "💰 *Deposit for Seed Purchase*\n"
+            "Please deposit the exact seed price ({}) USDT:\n"
             "📌 Enter a valid number."
         ),
         "choose_network": (
@@ -390,7 +388,7 @@ messages = {
             "Please send the *TXID* of your transaction or a *screenshot* of the deposit:\n"
             "📌 Copy the TXID or send a clear image."
         ),
-        "invalid_amount": "⚠️ *Error*: Invalid amount entered!\nPlease enter the exact land price ({}) USDT.",
+        "invalid_amount": "⚠️ *Error*: Invalid amount entered!\nPlease enter the exact seed price ({}) USDT.",
         "success": (
             "🎉 *Deposit Recorded!*\n"
             "Your transaction has been successfully recorded.\n"
@@ -413,8 +411,8 @@ messages = {
         ),
         "cancel": "🛑 *Operation Cancelled*\nTo return to the farm menu, use /start.",
         "confirmed": (
-            "✅ *Land Purchased!*\n"
-            "Your land has been added to your farm with 50 seeds.\n"
+            "✅ *Seed Purchased!*\n"
+            "Your seed has been added to your farm.\n"
             "🌱 You can now plant daily and harvest profits!"
         ),
         "rejected": (
@@ -429,12 +427,12 @@ messages = {
             f"💰 **Balance**: `{balance}` USDT\n"
             f"🎁 **Bonus**: `0.0` USDT\n"
             f"💎 **$FMX**: `0.0`\n"
-            f"🌱 **Your Lands**: {seeds or 'No lands yet'}\n"
+            f"🌱 **Your Seeds**: {seeds or 'No seeds yet'}\n"
             f"📈 **Total Profit Earned**: `{total_profit}` USDT\n"
             f"📝 **Successful Transactions**: `{transaction_count}`\n"
             f"⏰ **Last Transaction**: {'None' if not last_transaction else last_transaction}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"📌 Choose an option to **plant**, **harvest**, or **buy new lands**."
+            f"📌 Choose an option to **plant**, **harvest**, or **buy new seeds**."
         ),
         "withdraw": "🚜 *Harvest Profits*",
         "ask_withdraw_amount": (
@@ -497,12 +495,12 @@ messages = {
             f"────────────────────\n"
             f"{transactions}\n"
             f"────────────────────\n"
-            f"📌 For new land purchases or withdrawals, go to the farm menu."
+            f"📌 For new seed purchases or withdrawals, go to the farm menu."
         ),
         "no_history": (
             "📜 *No History*\n"
             "No transactions have been recorded yet.\n"
-            "📌 To buy a land, go to the farm menu."
+            "📌 To buy a seed, go to the farm menu."
         ),
         "unauthorized": (
             "🚫 *Error*: You are not authorized to access this command!\n"
@@ -526,7 +524,7 @@ messages = {
             f"👤 *Worker: @{username}*\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"📅 *Join Date*: {join_date}\n"
-            f"🌱 *Purchased Lands*:\n{seeds or 'No lands purchased'}\n"
+            f"🌱 *Purchased Seeds*:\n{seeds or 'No seeds purchased'}\n"
             f"💰 *Profit Earned for You*: `{profit}` USDT\n"
             f"📜 *Transactions*:\n{transactions or 'No transactions'}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
@@ -559,23 +557,23 @@ messages = {
             f"📌 Check the farm workers menu for more details."
         ),
         "plant_seed": (
-            "🌱 **Plant in Land** 🌿\n"
-            "Please choose a **land** to plant in today:\n"
-            "👇 Pick one of the **lands** below 👇"
+            "🌱 **Plant Seed** 🌿\n"
+            "Please choose a **seed** to plant today:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
         "plant_success": (
-            "🌱 *Land Planted!*\n"
-            "Your land has been successfully planted. You can harvest its profit after 00:00."
+            "🌱 *Seed Planted!*\n"
+            "Your seed has been successfully planted. You can harvest its profit after 00:00."
         ),
         "plant_already_done": (
-            "⚠️ *Error*: This land has already been planted today!\n"
-            "You can only plant each land once per day.\n"
-            "📌 Try again tomorrow or plant other lands."
+            "⚠️ *Error*: These seeds have already been planted today!\n"
+            "You can only plant each seed once per day.\n"
+            "📌 Try again tomorrow or plant other seeds."
         ),
         "harvest_seed": (
             "🚜 **Harvest Profit** 💰\n"
-            "Please choose a **land** to harvest its **profit**:\n"
-            "👇 Pick one of the **lands** below 👇"
+            "Please choose a **seed** to harvest its **profit**:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
         "harvest_success": lambda amount: (
             f"🎉 *Profit Harvested!*\n"
@@ -583,22 +581,22 @@ messages = {
             f"📌 The profit has been added to your farm balance."
         ),
         "harvest_not_ready": (
-            "⚠️ *Error*: You can't harvest this land yet!\n"
-            "📌 Please try after 00:00 or after planting the land."
+            "⚠️ *Error*: You can't harvest these seeds yet!\n"
+            "📌 Please try after 00:00 or after planting the seeds."
         ),
         "no_seeds": (
-            "🌱 *No Lands*\n"
-            "You don't have any lands yet.\n"
-            "📌 Go to the farm menu to buy a land."
+            "🌱 *No Seeds*\n"
+            "You don't have any seeds yet.\n"
+            "📌 Go to the farm menu to buy a seed."
         ),
         "db_test_success": (
             "✅ *Database Test Successful!*\n"
-            "Connection to the database is established, and the lands table is populated.\n"
-            "Number of lands: {}"
+            "Connection to the database is established, and the seeds table is populated.\n"
+            "Number of seeds: {}"
         ),
         "db_test_failed": (
             "❌ *Database Test Failed!*\n"
-            "Issue connecting to the database or lands table is empty.\n"
+            "Issue connecting to the database or seeds table is empty.\n"
             "Error details: {}"
         ),
         "admin_test_success": (
@@ -611,12 +609,12 @@ messages = {
             "Error details: {}"
         ),
         "no_seed": (
-            "⚠️ *Error*: This land does not belong to you!\n"
-            "📌 Please select another land or return to the farm menu."
+            "⚠️ *Error*: This seed does not belong to you!\n"
+            "📌 Please select another seed or return to the farm menu."
         ),
         "seed_not_planted": (
-            "⚠️ *Error*: This land has not been planted yet!\n"
-            "📌 Please plant the land first."
+            "⚠️ *Error*: This seed has not been planted yet!\n"
+            "📌 Please plant the seed first."
         ),
         "no_profit": (
             "⚠️ *Error*: No profit available to harvest!\n"
@@ -624,20 +622,20 @@ messages = {
         ),
         "manage_users_menu": "👤 *Manage Users*\nPlease select an option:",
         "ban_user": "🚫 Ban/Delete User",
-        "manage_seeds": "🌱 Manage Lands",
+        "manage_seeds": "🌱 Manage Seeds",
         "manage_balance": "💰 Manage Balance",
         "ask_user_id": "📋 Please enter the user ID (numbers only):",
         "invalid_user_id": "⚠️ *Error*: Invalid user ID or user does not exist!",
         "confirm_ban_user": lambda user_id: f"🚫 Are you sure you want to ban user {user_id}?",
         "user_banned": lambda user_id: f"✅ User {user_id} has been banned successfully.",
-        "ask_seed_action": "🌱 *Manage Lands*\nPlease select the action:",
-        "add_seed": "➕ Add Land",
-        "remove_seed": "➖ Remove Land",
-        "select_seed_to_add": "🌱 Please select the land to add:",
-        "select_seed_to_remove": "🌱 Please select the land to remove:",
-        "seed_added": lambda seed_name, user_id: f"✅ Land {seed_name} added to user {user_id}.",
-        "seed_removed": lambda seed_name, user_id: f"✅ Land {seed_name} removed from user {user_id}.",
-        "no_seeds_to_remove": "⚠️ *Error*: This user has no lands!",
+        "ask_seed_action": "🌱 *Manage Seeds*\nPlease select the action:",
+        "add_seed": "➕ Add Seed",
+        "remove_seed": "➖ Remove Seed",
+        "select_seed_to_add": "🌱 Please select the seed to add:",
+        "select_seed_to_remove": "🌱 Please select the seed to remove:",
+        "seed_added": lambda seed_name, user_id: f"✅ Seed {seed_name} added to user {user_id}.",
+        "seed_removed": lambda seed_name, user_id: f"✅ Seed {seed_name} removed from user {user_id}.",
+        "no_seeds_to_remove": "⚠️ *Error*: This user has no seeds!",
         "ask_balance_action": "💰 *Manage Balance*\nPlease select the action:",
         "add_balance": "➕ Add Balance",
         "subtract_balance": "➖ Subtract Balance",
