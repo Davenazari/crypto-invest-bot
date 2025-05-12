@@ -4,7 +4,7 @@ import psycopg2
 import asyncio
 from datetime import datetime, timedelta
 import datetime as dt
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # ConversationHandler states
-SELECT_LAND, DEPOSIT_AMOUNT, DEPOSIT_NETWORK, DEPOSIT_TXID, WITHDRAW_AMOUNT, WITHDRAW_NETWORK, WITHDRAW_ADDRESS, PLANT_LAND, HARVEST_LAND, CONFIRM_BALANCE_PURCHASE = range(10)
+SELECT_SEED, DEPOSIT_AMOUNT, DEPOSIT_NETWORK, DEPOSIT_TXID, WITHDRAW_AMOUNT, WITHDRAW_NETWORK, WITHDRAW_ADDRESS, PLANT_SEED, HARVEST_SEED, CONFIRM_BALANCE_PURCHASE = range(10)
 
 # Default admin ID
 DEFAULT_ADMIN_ID = 536587863  # Changed to integer
@@ -31,14 +31,14 @@ DEFAULT_ADMIN_ID = 536587863  # Changed to integer
 # Supported languages
 langs = {"فارسی": "fa", "English": "en"}
 
-# 🌾 **لیست زمین‌های مزرعه** 🌱
-LANDS = [
-    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.04, "seed_count": 50, "emoji": "🍅"},
-    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.043333, "seed_count": 50, "emoji": "🥒"},
-    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.042, "seed_count": 50, "emoji": "🍊"},
-    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0375, "seed_count": 50, "emoji": "🍎"},
-    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.034375, "seed_count": 50, "emoji": "🍌"},
-    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.036364, "seed_count": 50, "emoji": "🥭"},
+# 🌱 **لیست بذرهای مزرعه** 🌾
+SEEDS = [
+    {"name": "Tomato", "name_fa": "گوجه", "price": 15, "daily_profit_rate": 0.04, "emoji": "🍅"},
+    {"name": "Cucumber", "name_fa": "خیار", "price": 30, "daily_profit_rate": 0.043333, "emoji": "🥒"},
+    {"name": "Orange", "name_fa": "پرتغال", "price": 50, "daily_profit_rate": 0.042, "emoji": "🍊"},
+    {"name": "Apple", "name_fa": "سیب", "price": 120, "daily_profit_rate": 0.0375, "emoji": "🍎"},
+    {"name": "Banana", "name_fa": "موز", "price": 320, "daily_profit_rate": 0.034375, "emoji": "🍌"},
+    {"name": "Mango", "name_fa": "انبه", "price": 550, "daily_profit_rate": 0.036364, "emoji": "🥭"},
 ]
 
 # Localized messages
@@ -46,30 +46,29 @@ messages = {
     "fa": {
         "welcome": (
             "🌟 *خوش اومدید به مزرعه USDT!* 🌱\n"
-            "اینجا می‌تونید زمین بخرید، بذر بکارید و سود تضمین‌شده برداشت کنید. "
-            "برای شروع، یک زمین انتخاب کنید یا مزرعه خودتون رو بررسی کنید!\n"
+            "اینجا می‌تونید بذر میوه بخرید، هر روز بکارید و سود تضمین‌شده برداشت کنید. "
+            "برای شروع، یک بذر انتخاب کنید یا مزرعه خودتون رو بررسی کنید!\n"
             "👇 گزینه مورد نظرتون رو انتخاب کنید 👇"
         ),
         "main_menu": "🌾 *منوی مزرعه*\nلطفاً یک گزینه انتخاب کنید:",
-        "select_land": (
-            "🌾 **انتخاب زمین** 🏞️\n"
-            "لطفاً **زمین** مورد نظر برای خرید را انتخاب کنید:\n"
-            "👇 از **زمین‌های** زیر یکی را انتخاب کنید 👇"
+        "select_seed": (
+            "🌱 **انتخاب بذر** 🌾\n"
+            "لطفاً **بذر** مورد نظر برای خرید را انتخاب کنید:\n"
+            "👇 از **بذرهای** زیر یکی را انتخاب کنید 👇"
         ),
-        "land_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, seed_count, emoji: (
-            f"🌾 **زمین {name}** {emoji}\n"
+        "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, emoji: (
+            f"🌾 **بذر {name}** {emoji}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"💰 **قیمت**: `{price}` تتر\n"
-            f"🌱 **تعداد بذرها**: `{seed_count}` بذر\n"
-            f"📆 **سود روزانه ({seed_count} بذر)**: `{daily_profit * seed_count:.2f}` تتر\n"
-            f"📅 **سود هفتگی ({seed_count} بذر)**: `{weekly_profit * seed_count:.2f}` تتر\n"
-            f"🗓️ **سود ماهانه ({seed_count} بذر)**: `{monthly_profit * seed_count:.2f}` تتر\n"
+            f"📆 **سود روزانه**: `{daily_profit}` تتر\n"
+            f"📅 **سود هفتگی**: `{weekly_profit}` تتر\n"
+            f"🗓️ **سود ماهانه**: `{monthly_profit}` تتر\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"🏞️ **آماده خرید این زمین هستید؟**"
+            f"🌱 **آماده خرید این بذر هستید؟**"
         ),
         "ask_amount": (
-            "💰 *واریز برای خرید زمین*\n"
-            "لطفاً مقدار دقیق قیمت زمین ({}) تتر رو واریز کنید:\n"
+            "💰 *واریز برای خرید بذر*\n"
+            "لطفاً مقدار دقیق قیمت بذر ({}) تتر رو واریز کنید:\n"
             "📌 عدد معتبر وارد کنید."
         ),
         "choose_network": (
@@ -88,7 +87,7 @@ messages = {
             "لطفاً *TXID* تراکنش یا *اسکرین‌شات* واریز خودتون رو ارسال کنید:\n"
             "📌 TXID رو کپی کنید یا تصویر واضحی ارسال کنید."
         ),
-        "invalid_amount": "⚠️ *خطا*: مقدار واردشده معتبر نیست!\nلطفاً قیمت دقیق زمین ({}) تتر رو وارد کنید.",
+        "invalid_amount": "⚠️ *خطا*: مقدار واردشده معتبر نیست!\nلطفاً قیمت دقیق بذر ({}) تتر رو وارد کنید.",
         "success": (
             "🎉 *واریز ثبت شد!*\n"
             "تراکنش شما با موفقیت ثبت شد.\n"
@@ -111,9 +110,9 @@ messages = {
         ),
         "cancel": "🛑 *عملیات لغو شد*\nبرای بازگشت به منوی مزرعه، /start رو وارد کنید.",
         "confirmed": (
-            "✅ *زمین خریداری شد!*\n"
-            "زمین شما با موفقیت به مزرعه اضافه شد و `{}` بذر دریافت کردید.\n"
-            "🌱 حالا می‌تونید هر روز بذرها رو بکارید و سود برداشت کنید!"
+            "✅ *بذر خریداری شد!*\n"
+            "بذر شما با موفقیت به مزرعه اضافه شد.\n"
+            "🌱 حالا می‌تونید هر روز بکارید و سود برداشت کنید!"
         ),
         "rejected": (
             "❌ *تراکنش رد شد!*\n"
@@ -121,18 +120,18 @@ messages = {
             "📩 لطفاً با پشتیبانی تماس بگیرید."
         ),
         "wallet_menu": "🌾 *مزرعه من*\nلطفاً یک گزینه انتخاب کنید:",
-        "wallet_balance": lambda balance, lands, total_profit, transaction_count, last_transaction: (
+        "wallet_balance": lambda balance, seeds, total_profit, transaction_count, last_transaction: (
             f"🌾 **مزرعه شما** 🌱\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"💰 **موجودی**: `{balance}` تتر\n"
             f"🎁 **بونوس**: `0.0` تتر\n"
             f"💎 **$FMX**: `0.0`\n"
-            f"🏞️ **زمین‌های شما**: {lands or 'هیچ زمینی ندارید'}\n"
+            f"🌱 **بذرهای شما**: {seeds or 'هیچ بذری ندارید'}\n"
             f"📈 **کل سود کسب‌شده**: `{total_profit}` تتر\n"
             f"📝 **تراکنش‌های موفق**: `{transaction_count}`\n"
             f"⏰ **آخرین تراکنش**: {'ندارد' if not last_transaction else last_transaction}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"📌 برای **کاشت**، **برداشت** یا **خرید زمین جدید**، گزینه‌های زیر را انتخاب کنید."
+            f"📌 برای **کاشت**، **برداشت** یا **خرید بذر جدید**، گزینه‌های زیر را انتخاب کنید."
         ),
         "withdraw": "🚜 *برداشت سود*",
         "ask_withdraw_amount": (
@@ -195,12 +194,12 @@ messages = {
             f"────────────────────\n"
             f"{transactions}\n"
             f"────────────────────\n"
-            f"📌 برای خرید زمین یا برداشت، به منوی مزرعه برید."
+            f"📌 برای خرید بذر یا برداشت، به منوی مزرعه برید."
         ),
         "no_history": (
             "📜 *بدون تاریخچه*\n"
             "هنوز هیچ تراکنشی ثبت نشده.\n"
-            "📌 برای خرید زمین، به منوی مزرعه برید."
+            "📌 برای خرید بذر، به منوی مزرعه برید."
         ),
         "unauthorized": (
             "🚫 *خطا*: شما اجازه دسترسی به این دستور رو ندارید!\n"
@@ -220,11 +219,11 @@ messages = {
             "🤝 *کارگرهای مزرعه شما*\n"
             "لطفاً یکی از کارگرهای دعوت‌شده رو برای مشاهده جزئیات انتخاب کنید:"
         ),
-        "referral_details": lambda username, join_date, lands, profit, transactions: (
+        "referral_details": lambda username, join_date, seeds, profit, transactions: (
             f"👤 *کارگر: @{username}*\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"📅 *تاریخ ورود*: {join_date}\n"
-            f"🏞️ *زمین‌های خریداری‌شده*:\n{lands or 'هیچ زمینی خریداری نشده'}\n"
+            f"🌱 *بذرهای خریداری‌شده*:\n{seeds or 'هیچ بذری خریداری نشده'}\n"
             f"💰 *سود کسب‌شده برای شما*: `{profit}` تتر\n"
             f"📜 *تراکنش‌ها*:\n{transactions or 'بدون تراکنش'}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
@@ -256,24 +255,24 @@ messages = {
             f"از کاربر: `{user_id}`\n"
             f"📌 برای جزئیات بیشتر، به منوی کارگرهای مزرعه برید."
         ),
-        "plant_land": (
-            "🌱 **کاشت بذرها** 🌿\n"
-            "لطفاً **زمینی** که می‌خواهید بذرهایش را امروز بکارید انتخاب کنید:\n"
-            "👇 یکی از **زمین‌های** زیر را انتخاب کنید 👇"
+        "plant_seed": (
+            "🌱 **کاشت بذر** 🌿\n"
+            "لطفاً **بذری** که می‌خواهید امروز بکارید را انتخاب کنید:\n"
+            "👇 یکی از **بذرهای** زیر را انتخاب کنید 👇"
         ),
         "plant_success": (
-            "🌱 *بذرها کاشته شدند!*\n"
-            "بذرهای زمین شما با موفقیت کاشته شدند. می‌تونید بعد از ساعت 00:00 سودش رو برداشت کنید."
+            "🌱 *بذر کاشته شد!*\n"
+            "بذر شما با موفقیت کاشته شد. می‌تونید بعد از ساعت 00:00 سودش رو برداشت کنید."
         ),
         "plant_already_done": (
-            "⚠️ *خطا*: بذرهای این زمین امروز کاشته شدند!\n"
-            "هر زمین رو فقط یک‌بار در روز می‌تونید بکارید.\n"
-            "📌 فردا دوباره تلاش کنید یا زمین‌های دیگه‌ای بکارید."
+            "⚠️ *خطا*: این بذرها امروز کاشته شدن!\n"
+            "هر بذر رو فقط یک‌بار در روز می‌تونید بکارید.\n"
+            "📌 فردا دوباره تلاش کنید یا بذرهای دیگه‌ای بکارید."
         ),
-        "harvest_land": (
+        "harvest_seed": (
             "🚜 **برداشت سود** 💰\n"
-            "لطفاً **زمینی** که می‌خواهید **سود بذرهایش** را برداشت کنید انتخاب کنید:\n"
-            "👇 یکی از **زمین‌های** زیر را انتخاب کنید 👇"
+            "لطفاً **بذری** که می‌خواهید **سودش** را برداشت کنید انتخاب کنید:\n"
+            "👇 یکی از **بذرهای** زیر را انتخاب کنید 👇"
         ),
         "harvest_success": lambda amount: (
             f"🎉 *سود برداشت شد!*\n"
@@ -281,22 +280,22 @@ messages = {
             f"📌 سود به موجودی مزرعه‌تون اضافه شد."
         ),
         "harvest_not_ready": (
-            "⚠️ *خطا*: هنوز نمی‌تونید سود بذرهای این زمین رو برداشت کنید!\n"
+            "⚠️ *خطا*: هنوز نمی‌تونید سود این بذرها رو برداشت کنید!\n"
             "📌 لطفاً بعد از ساعت 00:00 یا پس از کاشت بذرها دوباره تلاش کنید."
         ),
-        "no_lands": (
-            "🏞️ *بدون زمین*\n"
-            "شما هنوز هیچ زمینی ندارید.\n"
-            "📌 برای خرید زمین، به منوی مزرعه برید."
+        "no_seeds": (
+            "🌱 *بدون بذر*\n"
+            "شما هنوز هیچ بذری ندارید.\n"
+            "📌 برای خرید بذر، به منوی مزرعه برید."
         ),
         "db_test_success": (
             "✅ *تست دیتابیس موفق!*\n"
-            "اتصال به دیتابیس برقرار است و جدول زمین‌ها پر شده است.\n"
-            "تعداد زمین‌ها: {}"
+            "اتصال به دیتابیس برقرار است و جدول بذرها پر شده است.\n"
+            "تعداد بذرها: {}"
         ),
         "db_test_failed": (
             "❌ *تست دیتابیس ناموفق!*\n"
-            "مشکل در اتصال به دیتابیس یا جدول زمین‌ها خالی است.\n"
+            "مشکل در اتصال به دیتابیس یا جدول بذرها خالی است.\n"
             "جزئیات خطا: {}"
         ),
         "admin_test_success": (
@@ -308,13 +307,13 @@ messages = {
             "نمی‌توان پیام را به ادمین ارسال کرد.\n"
             "جزئیات خطا: {}"
         ),
-        "no_land": (
-            "⚠️ *خطا*: این زمین متعلق به شما نیست!\n"
-            "📌 لطفاً زمین دیگری انتخاب کنید یا به منوی مزرعه برگردید."
+        "no_seed": (
+            "⚠️ *خطا*: این بذر متعلق به شما نیست!\n"
+            "📌 لطفاً بذر دیگری انتخاب کنید یا به منوی مزرعه برگردید."
         ),
-        "land_not_planted": (
-            "⚠️ *خطا*: بذرهای این زمین هنوز کاشته نشده‌اند!\n"
-            "📌 لطفاً ابتدا بذرها رو بکارید."
+        "seed_not_planted": (
+            "⚠️ *خطا*: این بذر هنوز کاشته نشده!\n"
+            "📌 لطفاً ابتدا بذر رو بکارید."
         ),
         "no_profit": (
             "⚠️ *خطا*: هیچ سودی برای برداشت وجود نداره!\n"
@@ -322,20 +321,20 @@ messages = {
         ),
         "manage_users_menu": "👤 *مدیریت کاربران*\nلطفاً یک گزینه انتخاب کنید:",
         "ban_user": "🚫 بن/حذف کاربر",
-        "manage_lands": "🏞️ مدیریت زمین‌ها",
+        "manage_seeds": "🌱 مدیریت بذرها",
         "manage_balance": "💰 مدیریت بالانس",
         "ask_user_id": "📋 لطفاً ID کاربر را وارد کنید (فقط عدد):",
         "invalid_user_id": "⚠️ *خطا*: ID کاربر نامعتبر است یا کاربر وجود ندارد!",
         "confirm_ban_user": lambda user_id: f"🚫 آیا مطمئن هستید که می‌خواهید کاربر {user_id} را بن کنید؟",
         "user_banned": lambda user_id: f"✅ کاربر {user_id} با موفقیت بن شد.",
-        "ask_land_action": "🏞️ *مدیریت زمین*\nلطفاً نوع عملیات را انتخاب کنید:",
-        "add_land": "➕ اضافه کردن زمین",
-        "remove_land": "➖ حذف زمین",
-        "select_land_to_add": "🏞️ لطفاً زمین مورد نظر برای اضافه کردن را انتخاب کنید:",
-        "select_land_to_remove": "🏞️ لطفاً زمین مورد نظر برای حذف را انتخاب کنید:",
-        "land_added": lambda land_name, user_id: f"✅ زمین {land_name} به کاربر {user_id} اضافه شد.",
-        "land_removed": lambda land_name, user_id: f"✅ زمین {land_name} از کاربر {user_id} حذف شد.",
-        "no_lands_to_remove": "⚠️ *خطا*: این کاربر هیچ زمینی ندارد!",
+        "ask_seed_action": "🌱 *مدیریت بذر*\nلطفاً نوع عملیات را انتخاب کنید:",
+        "add_seed": "➕ اضافه کردن بذر",
+        "remove_seed": "➖ حذف بذر",
+        "select_seed_to_add": "🌱 لطفاً بذر مورد نظر برای اضافه کردن را انتخاب کنید:",
+        "select_seed_to_remove": "🌱 لطفاً بذر مورد نظر برای حذف را انتخاب کنید:",
+        "seed_added": lambda seed_name, user_id: f"✅ بذر {seed_name} به کاربر {user_id} اضافه شد.",
+        "seed_removed": lambda seed_name, user_id: f"✅ بذر {seed_name} از کاربر {user_id} حذف شد.",
+        "no_seeds_to_remove": "⚠️ *خطا*: این کاربر هیچ بذری ندارد!",
         "ask_balance_action": "💰 *مدیریت بالانس*\nلطفاً نوع عملیات را انتخاب کنید:",
         "add_balance": "➕ افزایش بالانس",
         "subtract_balance": "➖ کاهش بالانس",
@@ -348,30 +347,29 @@ messages = {
     "en": {
         "welcome": (
             "🌟 *Welcome to the USDT Farm!* 🌱\n"
-            "Buy lands, plant seeds, and harvest guaranteed profits. "
-            "Start by choosing a land or checking your farm!\n"
+            "Buy fruit seeds, plant them daily, and harvest guaranteed profits. "
+            "Start by choosing a seed or checking your farm!\n"
             "👇 Choose an option below 👇"
         ),
         "main_menu": "🌾 *Farm Menu*\nPlease select an option:",
-        "select_land": (
-            "🌾 **Select Land** 🏞️\n"
-            "Please choose a **land** to buy:\n"
-            "👇 Pick one of the **lands** below 👇"
+        "select_seed": (
+            "🌱 **Select Seed** 🌾\n"
+            "Please choose a **seed** to buy:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
-        "land_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, seed_count, emoji: (
-            f"🌾 **{name} Land** {emoji}\n"
+        "seed_info": lambda name, price, daily_profit, weekly_profit, monthly_profit, total_monthly, emoji: (
+            f"🌾 **{name} Seed** {emoji}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"💰 **Price**: `{price}` USDT\n"
-            f"🌱 **Number of Seeds**: `{seed_count}` seeds\n"
-            f"📆 **Daily Profit ({seed_count} seeds)**: `{daily_profit * seed_count:.2f}` USDT\n"
-            f"📅 **Weekly Profit ({seed_count} seeds)**: `{weekly_profit * seed_count:.2f}` USDT\n"
-            f"🗓️ **Monthly Profit ({seed_count} seeds)**: `{monthly_profit * seed_count:.2f}` USDT\n"
+            f"📆 **Daily Profit**: `{daily_profit}` USDT\n"
+            f"📅 **Weekly Profit**: `{weekly_profit}` USDT\n"
+            f"🗓️ **Monthly Profit**: `{monthly_profit}` USDT\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"🏞️ **Ready to buy this land?**"
+            f"🌱 **Ready to buy this seed?**"
         ),
         "ask_amount": (
-            "💰 *Deposit for Land Purchase*\n"
-            "Please deposit the exact land price ({}) USDT:\n"
+            "💰 *Deposit for Seed Purchase*\n"
+            "Please deposit the exact seed price ({}) USDT:\n"
             "📌 Enter a valid number."
         ),
         "choose_network": (
@@ -390,7 +388,7 @@ messages = {
             "Please send the *TXID* of your transaction or a *screenshot* of the deposit:\n"
             "📌 Copy the TXID or send a clear image."
         ),
-        "invalid_amount": "⚠️ *Error*: Invalid amount entered!\nPlease enter the exact land price ({}) USDT.",
+        "invalid_amount": "⚠️ *Error*: Invalid amount entered!\nPlease enter the exact seed price ({}) USDT.",
         "success": (
             "🎉 *Deposit Recorded!*\n"
             "Your transaction has been successfully recorded.\n"
@@ -413,9 +411,9 @@ messages = {
         ),
         "cancel": "🛑 *Operation Cancelled*\nTo return to the farm menu, use /start.",
         "confirmed": (
-            "✅ *Land Purchased!*\n"
-            "Your land has been added to your farm, and you received `{}` seeds.\n"
-            "🌱 You can now plant the seeds daily and harvest profits!"
+            "✅ *Seed Purchased!*\n"
+            "Your seed has been added to your farm.\n"
+            "🌱 You can now plant daily and harvest profits!"
         ),
         "rejected": (
             "❌ *Transaction Rejected!*\n"
@@ -423,18 +421,18 @@ messages = {
             "📩 Please contact support."
         ),
         "wallet_menu": "🌾 *My Farm*\nPlease select an option:",
-        "wallet_balance": lambda balance, lands, total_profit, transaction_count, last_transaction: (
+        "wallet_balance": lambda balance, seeds, total_profit, transaction_count, last_transaction: (
             f"🌾 **Your Farm** 🌱\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"💰 **Balance**: `{balance}` USDT\n"
             f"🎁 **Bonus**: `0.0` USDT\n"
             f"💎 **$FMX**: `0.0`\n"
-            f"🏞️ **Your Lands**: {lands or 'No lands yet'}\n"
+            f"🌱 **Your Seeds**: {seeds or 'No seeds yet'}\n"
             f"📈 **Total Profit Earned**: `{total_profit}` USDT\n"
             f"📝 **Successful Transactions**: `{transaction_count}`\n"
             f"⏰ **Last Transaction**: {'None' if not last_transaction else last_transaction}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
-            f"📌 Choose an option to **plant**, **harvest**, or **buy new lands**."
+            f"📌 Choose an option to **plant**, **harvest**, or **buy new seeds**."
         ),
         "withdraw": "🚜 *Harvest Profits*",
         "ask_withdraw_amount": (
@@ -497,12 +495,12 @@ messages = {
             f"────────────────────\n"
             f"{transactions}\n"
             f"────────────────────\n"
-            f"📌 For new land purchases or withdrawals, go to the farm menu."
+            f"📌 For new seed purchases or withdrawals, go to the farm menu."
         ),
         "no_history": (
             "📜 *No History*\n"
             "No transactions have been recorded yet.\n"
-            "📌 To buy a land, go to the farm menu."
+            "📌 To buy a seed, go to the farm menu."
         ),
         "unauthorized": (
             "🚫 *Error*: You are not authorized to access this command!\n"
@@ -522,11 +520,11 @@ messages = {
             "🤝 *Your Farm Workers*\n"
             "Please select one of your invited workers to view details:"
         ),
-        "referral_details": lambda username, join_date, lands, profit, transactions: (
+        "referral_details": lambda username, join_date, seeds, profit, transactions: (
             f"👤 *Worker: @{username}*\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n"
             f"📅 *Join Date*: {join_date}\n"
-            f"🏞️ *Purchased Lands*:\n{lands or 'No lands purchased'}\n"
+            f"🌱 *Purchased Seeds*:\n{seeds or 'No seeds purchased'}\n"
             f"💰 *Profit Earned for You*: `{profit}` USDT\n"
             f"📜 *Transactions*:\n{transactions or 'No transactions'}\n"
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
@@ -558,24 +556,24 @@ messages = {
             f"From User: `{user_id}`\n"
             f"📌 Check the farm workers menu for more details."
         ),
-        "plant_land": (
-            "🌱 **Plant Seeds** 🌿\n"
-            "Please choose a **land** to plant its seeds today:\n"
-            "👇 Pick one of the **lands** below 👇"
+        "plant_seed": (
+            "🌱 **Plant Seed** 🌿\n"
+            "Please choose a **seed** to plant today:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
         "plant_success": (
-            "🌱 *Seeds Planted!*\n"
-            "The seeds of your land have been successfully planted. You can harvest their profit after 00:00."
+            "🌱 *Seed Planted!*\n"
+            "Your seed has been successfully planted. You can harvest its profit after 00:00."
         ),
         "plant_already_done": (
-            "⚠️ *Error*: The seeds of this land have already been planted today!\n"
-            "You can only plant each land’s seeds once per day.\n"
-            "📌 Try again tomorrow or plant other lands’ seeds."
+            "⚠️ *Error*: These seeds have already been planted today!\n"
+            "You can only plant each seed once per day.\n"
+            "📌 Try again tomorrow or plant other seeds."
         ),
-        "harvest_land": (
+        "harvest_seed": (
             "🚜 **Harvest Profit** 💰\n"
-            "Please choose a **land** to harvest its **seeds’ profit**:\n"
-            "👇 Pick one of the **lands** below 👇"
+            "Please choose a **seed** to harvest its **profit**:\n"
+            "👇 Pick one of the **seeds** below 👇"
         ),
         "harvest_success": lambda amount: (
             f"🎉 *Profit Harvested!*\n"
@@ -583,22 +581,22 @@ messages = {
             f"📌 The profit has been added to your farm balance."
         ),
         "harvest_not_ready": (
-            "⚠️ *Error*: You can’t harvest the seeds of this land yet!\n"
+            "⚠️ *Error*: You can't harvest these seeds yet!\n"
             "📌 Please try after 00:00 or after planting the seeds."
         ),
-        "no_lands": (
-            "🏞️ *No Lands*\n"
-            "You don’t have any lands yet.\n"
-            "📌 Go to the farm menu to buy a land."
+        "no_seeds": (
+            "🌱 *No Seeds*\n"
+            "You don't have any seeds yet.\n"
+            "📌 Go to the farm menu to buy a seed."
         ),
         "db_test_success": (
             "✅ *Database Test Successful!*\n"
-            "Connection to the database is established, and the lands table is populated.\n"
-            "Number of lands: {}"
+            "Connection to the database is established, and the seeds table is populated.\n"
+            "Number of seeds: {}"
         ),
         "db_test_failed": (
             "❌ *Database Test Failed!*\n"
-            "Issue connecting to the database or lands table is empty.\n"
+            "Issue connecting to the database or seeds table is empty.\n"
             "Error details: {}"
         ),
         "admin_test_success": (
@@ -610,13 +608,13 @@ messages = {
             "Unable to send message to admin.\n"
             "Error details: {}"
         ),
-        "no_land": (
-            "⚠️ *Error*: This land does not belong to you!\n"
-            "📌 Please select another land or return to the farm menu."
+        "no_seed": (
+            "⚠️ *Error*: This seed does not belong to you!\n"
+            "📌 Please select another seed or return to the farm menu."
         ),
-        "land_not_planted": (
-            "⚠️ *Error*: The seeds of this land have not been planted yet!\n"
-            "📌 Please plant the seeds first."
+        "seed_not_planted": (
+            "⚠️ *Error*: This seed has not been planted yet!\n"
+            "📌 Please plant the seed first."
         ),
         "no_profit": (
             "⚠️ *Error*: No profit available to harvest!\n"
@@ -624,20 +622,20 @@ messages = {
         ),
         "manage_users_menu": "👤 *Manage Users*\nPlease select an option:",
         "ban_user": "🚫 Ban/Delete User",
-        "manage_lands": "🏞️ Manage Lands",
+        "manage_seeds": "🌱 Manage Seeds",
         "manage_balance": "💰 Manage Balance",
         "ask_user_id": "📋 Please enter the user ID (numbers only):",
         "invalid_user_id": "⚠️ *Error*: Invalid user ID or user does not exist!",
         "confirm_ban_user": lambda user_id: f"🚫 Are you sure you want to ban user {user_id}?",
         "user_banned": lambda user_id: f"✅ User {user_id} has been banned successfully.",
-        "ask_land_action": "🏞️ *Manage Lands*\nPlease select the action:",
-        "add_land": "➕ Add Land",
-        "remove_land": "➖ Remove Land",
-        "select_land_to_add": "🏞️ Please select the land to add:",
-        "select_land_to_remove": "🏞️ Please select the land to remove:",
-        "land_added": lambda land_name, user_id: f"✅ Land {land_name} added to user {user_id}.",
-        "land_removed": lambda land_name, user_id: f"✅ Land {land_name} removed from user {user_id}.",
-        "no_lands_to_remove": "⚠️ *Error*: This user has no lands!",
+        "ask_seed_action": "🌱 *Manage Seeds*\nPlease select the action:",
+        "add_seed": "➕ Add Seed",
+        "remove_seed": "➖ Remove Seed",
+        "select_seed_to_add": "🌱 Please select the seed to add:",
+        "select_seed_to_remove": "🌱 Please select the seed to remove:",
+        "seed_added": lambda seed_name, user_id: f"✅ Seed {seed_name} added to user {user_id}.",
+        "seed_removed": lambda seed_name, user_id: f"✅ Seed {seed_name} removed from user {user_id}.",
+        "no_seeds_to_remove": "⚠️ *Error*: This user has no seeds!",
         "ask_balance_action": "💰 *Manage Balance*\nPlease select the action:",
         "add_balance": "➕ Add Balance",
         "subtract_balance": "➖ Subtract Balance",
@@ -665,12 +663,10 @@ if not DATABASE_URL:
 async def notify_admin_error(bot_token, error_message):
     """Send error notification to admin asynchronously."""
     try:
-        # پاکسازی پیام خطا از کاراکترهای مشکل‌ساز
-        safe_error_message = error_message.replace("`", "").replace("*", "").replace("_", "")
         bot = Bot(token=bot_token)
         await bot.send_message(
             chat_id=DEFAULT_ADMIN_ID,
-            text=f"⚠️ *خطا*: {safe_error_message[:200]}",  # محدود کردن طول پیام
+            text=f"⚠️ *Error*: {error_message}",
             parse_mode="Markdown"
         )
         logger.info("Successfully sent error notification to admin")
@@ -678,348 +674,197 @@ async def notify_admin_error(bot_token, error_message):
         logger.error(f"Failed to notify admin: {admin_e}")
         
 def init_db():
-    """Initialize database tables, update land profit rates, and migrate data from seeds to lands."""
+    """Initialize database tables and update seed profit rates."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
-            conn.autocommit = False  # Start transaction
-            try:
-                with conn.cursor() as c:
-                    # Add username and created_at columns to users table
-                    logger.info("Adding username and created_at columns to users table")
-                    c.execute('''
-                        ALTER TABLE users
-                        ADD COLUMN IF NOT EXISTS username TEXT,
-                        ADD COLUMN IF NOT EXISTS created_at TEXT
-                    ''')
-                    logger.info("Successfully added username and created_at columns to users table")
+            with conn.cursor() as c:
+                # اضافه کردن ستون‌های username و created_at به جدول users
+                logger.info("Adding username and created_at columns to users table")
+                c.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS username TEXT,
+                    ADD COLUMN IF NOT EXISTS created_at TEXT
+                ''')
+                logger.info("Successfully added username and created_at columns to users table")
 
-                    # Add bonus and fmx_balance columns to users table
-                    logger.info("Adding bonus and fmx_balance columns to users table")
-                    c.execute('''
-                        ALTER TABLE users
-                        ADD COLUMN IF NOT EXISTS "bonus" REAL DEFAULT 0.0,
-                        ADD COLUMN IF NOT EXISTS fmx_balance REAL DEFAULT 0.0
-                    ''')
-                    logger.info("Successfully added bonus and fmx_balance columns to users table")
+                # اضافه کردن ستون‌های bonus و fmx_balance به جدول users
+                logger.info("Adding bonus and fmx_balance columns to users table")
+                c.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS "bonus" REAL DEFAULT 0.0,
+                    ADD COLUMN IF NOT EXISTS fmx_balance REAL DEFAULT 0.0
+                ''')
+                logger.info("Successfully added bonus and fmx_balance columns to users table")
 
-                    # Create users table
-                    logger.info("Creating users table if not exists")
-                    c.execute('''
-                        CREATE TABLE IF NOT EXISTS users (
-                            user_id BIGINT PRIMARY KEY,
-                            language TEXT DEFAULT 'en',
-                            balance REAL DEFAULT 0.0,
-                            username TEXT,
-                            created_at TEXT,
-                            "bonus" REAL DEFAULT 0.0,
-                            fmx_balance REAL DEFAULT 0.0
-                        )
-                    ''')
-                    logger.info("Users table created or already exists")
+                # تعریف جدول users با ساختار درست
+                logger.info("Creating users table if not exists")
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id BIGINT PRIMARY KEY,
+                        language TEXT DEFAULT 'en',
+                        balance REAL DEFAULT 0.0,
+                        username TEXT,
+                        created_at TEXT,
+                        "bonus" REAL DEFAULT 0.0,
+                        fmx_balance REAL DEFAULT 0.0
+                    )
+                ''')
+                logger.info("Users table created or already exists")
 
-                    # Add is_banned column
-                    logger.info("Adding is_banned column to users table")
-                    c.execute('''
-                        ALTER TABLE users
-                        ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE
-                    ''')
-                    logger.info("Successfully added is_banned column to users table")
+                # اضافه کردن ستون is_banned
+                logger.info("Adding is_banned column to users table")
+                c.execute('''
+                    ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE
+                ''')
+                logger.info("Successfully added is_banned column to users table")
 
-                    # Create lands table with UNIQUE constraint on name
-                    logger.info("Creating lands table if not exists")
-                    c.execute('''
-                        CREATE TABLE IF NOT EXISTS lands (
-                            land_id SERIAL PRIMARY KEY,
-                            name TEXT NOT NULL UNIQUE,
-                            name_fa TEXT NOT NULL,
-                            price REAL NOT NULL,
-                            daily_profit_rate REAL NOT NULL,
-                            seed_count INTEGER NOT NULL DEFAULT 50
-                        )
-                    ''')
-                    logger.info("Lands table created or already exists")
+                # تعریف جدول seeds
+                logger.info("Creating seeds table if not exists")
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS seeds (
+                        seed_id SERIAL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        name_fa TEXT NOT NULL,
+                        price REAL NOT NULL,
+                        daily_profit_rate REAL NOT NULL
+                    )
+                ''')
+                logger.info("Seeds table created or already exists")
 
-                    # Ensure UNIQUE constraint on name for existing lands table
-                    logger.info("Ensuring UNIQUE constraint on lands.name")
-                    c.execute('''
-                        DO $$
-                        BEGIN
-                            IF NOT EXISTS (
-                                SELECT 1 FROM information_schema.table_constraints
-                                WHERE table_name = 'lands' AND constraint_type = 'UNIQUE' AND constraint_name = 'unique_land_name'
-                            ) THEN
-                                ALTER TABLE lands ADD CONSTRAINT unique_land_name UNIQUE (name);
-                            END IF;
-                        END $$;
-                    ''')
-                    logger.info("UNIQUE constraint ensured on lands.name")
+                # تعریف جدول user_seeds
+                logger.info("Creating user_seeds table if not exists")
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS user_seeds (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT,
+                        seed_id INTEGER,
+                        purchase_date TEXT,
+                        last_planted TEXT,
+                        last_harvested TEXT,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
+                    )
+                ''')
+                logger.info("User_seeds table created or already exists")
 
-                    # Create user_lands table
-                    logger.info("Creating user_lands table if not exists")
-                    c.execute('''
-                        CREATE TABLE IF NOT EXISTS user_lands (
-                            id SERIAL PRIMARY KEY,
-                            user_id BIGINT,
-                            land_id INTEGER,
-                            purchase_date TEXT,
-                            last_planted TEXT,
-                            last_harvested TEXT,
-                            FOREIGN KEY (user_id) REFERENCES users (user_id),
-                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
-                        )
-                    ''')
-                    logger.info("User_lands table created or already exists")
+                # تعریف جدول transactions
+                logger.info("Creating transactions table if not exists")
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS transactions (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT,
+                        amount REAL,
+                        network TEXT,
+                        status TEXT,
+                        type TEXT,
+                        created_at TEXT,
+                        message_id BIGINT,
+                        address TEXT,
+                        seed_id INTEGER,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
+                    )
+                ''')
+                logger.info("Transactions table created or already exists")
 
-                    # Create transactions table
-                    logger.info("Creating transactions table if not exists")
-                    c.execute('''
-                        CREATE TABLE IF NOT EXISTS transactions (
-                            id SERIAL PRIMARY KEY,
-                            user_id BIGINT,
-                            amount REAL,
-                            network TEXT,
-                            status TEXT,
-                            type TEXT,
-                            created_at TEXT,
-                            message_id BIGINT,
-                            address TEXT,
-                            land_id INTEGER,
-                            FOREIGN KEY (user_id) REFERENCES users (user_id),
-                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
-                        )
-                    ''')
-                    logger.info("Transactions table created or already exists")
+                # تعریف جدول referrals
+                logger.info("Creating referrals table if not exists")
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS referrals (
+                        id SERIAL PRIMARY KEY,
+                        referrer_id BIGINT,
+                        referred_id BIGINT,
+                        level INTEGER,
+                        FOREIGN KEY (referrer_id) REFERENCES users (user_id),
+                        FOREIGN KEY (referred_id) REFERENCES users (user_id)
+                    )
+                ''')
+                logger.info("Referrals table created or already exists")
 
-                    # Ensure land_id column in transactions
-                    logger.info("Checking for land_id column in transactions table")
-                    c.execute("""
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name = 'transactions' AND column_name = 'land_id'
-                    """)
-                    if not c.fetchone():
-                        logger.info("Adding land_id column to transactions table")
+                # تعریف جدول referral_profits
+                logger.info("Creating referral_profits table if not exists")
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS referral_profits (
+                        id SERIAL PRIMARY KEY,
+                        referrer_id BIGINT,
+                        referred_id BIGINT,
+                        transaction_id INTEGER,
+                        level INTEGER,
+                        profit_amount REAL,
+                        created_at TEXT,
+                        FOREIGN KEY (referrer_id) REFERENCES users (user_id),
+                        FOREIGN KEY (referred_id) REFERENCES users (user_id),
+                        FOREIGN KEY (transaction_id) REFERENCES transactions (id)
+                    )
+                ''')
+                logger.info("Referral_profits table created or already exists")
+
+                # تعریف جدول profits
+                logger.info("Creating profits table if not exists")
+                c.execute('''
+                    CREATE TABLE IF NOT EXISTS profits (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT,
+                        seed_id INTEGER,
+                        amount REAL,
+                        period TEXT,
+                        created_at TEXT,
+                        FOREIGN KEY (user_id) REFERENCES users (user_id),
+                        FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
+                    )
+                ''')
+                logger.info("Profits table created or already exists")
+
+                # پر کردن یا به‌روزرسانی جدول seeds
+                logger.info("Checking and updating seeds table")
+                c.execute('SELECT COUNT(*) FROM seeds')
+                seed_count = c.fetchone()[0]
+                if seed_count == 0:
+                    logger.info("Populating seeds table")
+                    for seed in SEEDS:
                         c.execute('''
-                            ALTER TABLE transactions
-                            ADD COLUMN land_id INTEGER
-                        ''')
+                            INSERT INTO seeds (name, name_fa, price, daily_profit_rate)
+                            VALUES (%s, %s, %s, %s)
+                        ''', (seed["name"], seed["name_fa"], seed["price"], seed["daily_profit_rate"]))
+                    logger.info("Successfully populated seeds table")
+                else:
+                    logger.info("Updating seeds table with new daily_profit_rate")
+                    for seed in SEEDS:
                         c.execute('''
-                            ALTER TABLE transactions
-                            ADD CONSTRAINT transactions_land_id_fkey
-                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
-                        ''')
-                        logger.info("Successfully added land_id column and foreign key to transactions table")
+                            UPDATE seeds
+                            SET daily_profit_rate = %s
+                            WHERE name = %s
+                        ''', (seed["daily_profit_rate"], seed["name"]))
+                    logger.info("Successfully updated daily_profit_rate in seeds table")
 
-                    # Create profits table
-                    logger.info("Creating profits table if not exists")
+                # چک کردن وجود ستون seed_id در جدول transactions
+                logger.info("Checking for seed_id column in transactions table")
+                c.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'transactions' AND column_name = 'seed_id'
+                """)
+                if not c.fetchone():
+                    logger.info("Adding seed_id column to transactions table")
                     c.execute('''
-                        CREATE TABLE IF NOT EXISTS profits (
-                            id SERIAL PRIMARY KEY,
-                            user_id BIGINT,
-                            land_id INTEGER,
-                            amount REAL,
-                            period TEXT,
-                            created_at TEXT,
-                            FOREIGN KEY (user_id) REFERENCES users (user_id),
-                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
-                        )
+                        ALTER TABLE transactions
+                        ADD COLUMN seed_id INTEGER
                     ''')
-                    logger.info("Profits table created or already exists")
-
-                    # Ensure land_id column in profits
-                    logger.info("Checking for land_id column in profits table")
-                    c.execute("""
-                        SELECT column_name 
-                        FROM information_schema.columns 
-                        WHERE table_name = 'profits' AND column_name = 'land_id'
-                    """)
-                    if not c.fetchone():
-                        logger.info("Adding land_id column to profits table")
-                        c.execute('''
-                            ALTER TABLE profits
-                            ADD COLUMN land_id INTEGER
-                        ''')
-                        c.execute('''
-                            ALTER TABLE profits
-                            ADD CONSTRAINT profits_land_id_fkey
-                            FOREIGN KEY (land_id) REFERENCES lands (land_id)
-                        ''')
-                        logger.info("Successfully added land_id column and foreign key to profits table")
-
-                    # Create referrals table
-                    logger.info("Creating referrals table if not exists")
                     c.execute('''
-                        CREATE TABLE IF NOT EXISTS referrals (
-                            id SERIAL PRIMARY KEY,
-                            referrer_id BIGINT,
-                            referred_id BIGINT,
-                            level INTEGER,
-                            FOREIGN KEY (referrer_id) REFERENCES users (user_id),
-                            FOREIGN KEY (referred_id) REFERENCES users (user_id)
-                        )
+                        ALTER TABLE transactions
+                        ADD CONSTRAINT transactions_seed_id_fkey
+                        FOREIGN KEY (seed_id) REFERENCES seeds (seed_id)
                     ''')
-                    logger.info("Referrals table created or already exists")
+                    logger.info("Successfully added seed_id column and foreign key to transactions table")
 
-                    # Create referral_profits table
-                    logger.info("Creating referral_profits table if not exists")
-                    c.execute('''
-                        CREATE TABLE IF NOT EXISTS referral_profits (
-                            id SERIAL PRIMARY KEY,
-                            referrer_id BIGINT,
-                            referred_id BIGINT,
-                            transaction_id INTEGER,
-                            level INTEGER,
-                            profit_amount REAL,
-                            created_at TEXT,
-                            FOREIGN KEY (referrer_id) REFERENCES users (user_id),
-                            FOREIGN KEY (referred_id) REFERENCES users (user_id),
-                            FOREIGN KEY (transaction_id) REFERENCES transactions (id)
-                        )
-                    ''')
-                    logger.info("Referral_profits table created or already exists")
-
-                    # Migrate data from seeds and user_seeds
-                    logger.info("Starting data migration from seeds to lands")
-                    c.execute("""
-                        SELECT EXISTS (
-                            SELECT FROM information_schema.tables 
-                            WHERE table_name = 'seeds'
-                        )
-                    """)
-                    seeds_table_exists = c.fetchone()[0]
-                    
-                    if seeds_table_exists:
-                        # Migrate seeds to lands
-                        logger.info("Migrating data from seeds to lands")
-                        c.execute('''
-                            INSERT INTO lands (name, name_fa, price, daily_profit_rate, seed_count)
-                            SELECT name, name_fa, price, daily_profit_rate, 50
-                            FROM seeds
-                            ON CONFLICT (name) DO NOTHING
-                        ''')
-                        logger.info("Successfully migrated seeds to lands")
-
-                        # Migrate user_seeds to user_lands
-                        logger.info("Migrating data from user_seeds to user_lands")
-                        c.execute('''
-                            INSERT INTO user_lands (user_id, land_id, purchase_date, last_planted, last_harvested)
-                            SELECT us.user_id, l.land_id, us.purchase_date, us.last_planted, us.last_harvested
-                            FROM user_seeds us
-                            JOIN seeds s ON us.seed_id = s.seed_id
-                            JOIN lands l ON s.name = l.name
-                        ''')
-                        logger.info("Successfully migrated user_seeds to user_lands")
-
-                        # Check for seed_id column in transactions
-                        c.execute("""
-                            SELECT column_name 
-                            FROM information_schema.columns 
-                            WHERE table_name = 'transactions' AND column_name = 'seed_id'
-                        """)
-                        if c.fetchone():
-                            # Update land_id in transactions
-                            logger.info("Updating land_id in transactions table")
-                            c.execute('''
-                                UPDATE transactions t
-                                SET land_id = l.land_id
-                                FROM seeds s
-                                JOIN lands l ON s.name = l.name
-                                WHERE t.seed_id = s.seed_id
-                            ''')
-                            logger.info("Successfully updated land_id in transactions table")
-
-                        # Check for seed_id column in profits
-                        c.execute("""
-                            SELECT column_name 
-                            FROM information_schema.columns 
-                            WHERE table_name = 'profits' AND column_name = 'seed_id'
-                        """)
-                        if c.fetchone():
-                            # Update land_id in profits
-                            logger.info("Updating land_id in profits table")
-                            c.execute('''
-                                UPDATE profits p
-                                SET land_id = l.land_id
-                                FROM seeds s
-                                JOIN lands l ON s.name = l.name
-                                WHERE p.seed_id = s.seed_id
-                            ''')
-                            logger.info("Successfully updated land_id in profits table")
-
-                        # Drop seed_id column from transactions (if exists)
-                        logger.info("Checking for seed_id column in transactions table")
-                        c.execute("""
-                            SELECT column_name 
-                            FROM information_schema.columns 
-                            WHERE table_name = 'transactions' AND column_name = 'seed_id'
-                        """)
-                        if c.fetchone():
-                            logger.info("Dropping seed_id column from transactions table")
-                            c.execute('''
-                                ALTER TABLE transactions
-                                DROP COLUMN IF EXISTS seed_id
-                            ''')
-                            logger.info("Successfully dropped seed_id column from transactions table")
-
-                        # Drop seed_id column from profits (if exists)
-                        logger.info("Checking for seed_id column in profits table")
-                        c.execute("""
-                            SELECT column_name 
-                            FROM information_schema.columns 
-                            WHERE table_name = 'profits' AND column_name = 'seed_id'
-                        """)
-                        if c.fetchone():
-                            logger.info("Dropping seed_id column from profits table")
-                            c.execute('''
-                                ALTER TABLE profits
-                                DROP COLUMN IF EXISTS seed_id
-                            ''')
-                            logger.info("Successfully dropped seed_id column from profits table")
-
-                        # Drop old tables
-                        logger.info("Dropping old seeds and user_seeds tables")
-                        c.execute('DROP TABLE IF EXISTS user_seeds')
-                        c.execute('DROP TABLE IF EXISTS seeds')
-                        logger.info("Successfully dropped old seeds and user_seeds tables")
-
-                    # Populate or update lands table
-                    logger.info("Checking and updating lands table")
-                    c.execute('SELECT COUNT(*) FROM lands')
-                    land_count = c.fetchone()[0]
-                    if land_count == 0:
-                        logger.info("Populating lands table")
-                        for land in LANDS:
-                            c.execute('''
-                                INSERT INTO lands (name, name_fa, price, daily_profit_rate, seed_count)
-                                VALUES (%s, %s, %s, %s, %s)
-                                ON CONFLICT (name) DO NOTHING
-                            ''', (land["name"], land["name_fa"], land["price"], land["daily_profit_rate"], land["seed_count"]))
-                        logger.info("Successfully populated lands table")
-                    else:
-                        logger.info("Updating lands table with new daily_profit_rate and seed_count")
-                        for land in LANDS:
-                            c.execute('''
-                                UPDATE lands
-                                SET daily_profit_rate = %s, seed_count = %s
-                                WHERE name = %s
-                            ''', (land["daily_profit_rate"], land["seed_count"], land["name"]))
-                        logger.info("Successfully updated daily_profit_rate and seed_count in lands table")
-
-                    conn.commit()
-                    logger.info("Database initialized, data migrated, and lands updated successfully")
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"خطا در مقداردهی اولیه پایگاه داده: {str(e)}", exc_info=True)
-                bot_token = os.getenv("BOT_TOKEN")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(notify_admin_error(bot_token, f"خطا در مقداردهی اولیه پایگاه داده: {str(e)}"))
-                loop.close()
-                raise
-            finally:
-                conn.autocommit = True
+                conn.commit()
+                logger.info("Database initialized and seeds updated successfully")
     except Exception as e:
-        logger.error(f"خطا در اتصال به پایگاه داده: {str(e)}", exc_info=True)
+        logger.error(f"Error initializing database: {str(e)}", exc_info=True)
+        bot_token = os.getenv("BOT_TOKEN")
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
         raise
 
 def fix_users_table():
@@ -1054,20 +899,20 @@ def ban_user(user_id):
         logger.error(f"Error banning user {user_id}: {e}")
         raise
 
-def add_user_land_admin(user_id, land_id):
-    """Add a land to a user by admin."""
+def add_user_seed_admin(user_id, seed_id):
+    """Add a seed to a user by admin."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 purchase_date = datetime.now(pytz.timezone('Asia/Tehran')).isoformat()
                 c.execute('''
-                    INSERT INTO user_lands (user_id, land_id, purchase_date)
+                    INSERT INTO user_seeds (user_id, seed_id, purchase_date)
                     VALUES (%s, %s, %s)
-                ''', (user_id, land_id, purchase_date))
+                ''', (user_id, seed_id, purchase_date))
                 conn.commit()
-                logger.info(f"Land {land_id} added to user {user_id} by admin")
+                logger.info(f"Seed {seed_id} added to user {user_id} by admin")
     except Exception as e:
-        logger.error(f"Error adding land {land_id} to user {user_id}: {e}")
+        logger.error(f"Error adding seed {seed_id} to user {user_id}: {e}")
         raise
 
 def remove_user_seed(user_id, user_seed_id):
@@ -1127,11 +972,10 @@ def upsert_user(user_id, language='en', username=None, referred_by=None):
 
 # تابع جدید برای گرفتن جزئیات رفرال
 def get_referral_details(referrer_id, referred_id, lang):
-    """Retrieve referral details using lands instead of seeds."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # Get user info
+                # گرفتن اطلاعات کاربر (username و زمان ورود)
                 c.execute('''
                     SELECT username, created_at 
                     FROM users 
@@ -1142,22 +986,22 @@ def get_referral_details(referrer_id, referred_id, lang):
                     return None
                 username, join_date = user_info
 
-                # Get purchased lands
+                # گرفتن بذرهای خریداری‌شده
                 c.execute('''
-                    SELECT l.name, l.name_fa, t.created_at
-                    FROM user_lands ul
-                    JOIN lands l ON ul.land_id = l.land_id
-                    JOIN transactions t ON t.land_id = l.land_id AND t.user_id = %s AND t.status = 'confirmed'
-                    WHERE ul.user_id = %s
+                    SELECT s.name, s.name_fa, t.created_at
+                    FROM user_seeds us
+                    JOIN seeds s ON us.seed_id = s.seed_id
+                    JOIN transactions t ON t.seed_id = s.seed_id AND t.user_id = %s AND t.status = 'confirmed'
+                    WHERE us.user_id = %s
                     ORDER BY t.created_at DESC
                 ''', (referred_id, referred_id))
-                lands = c.fetchall()
-                lands_text = "\n".join(
+                seeds = c.fetchall()
+                seeds_text = "\n".join(
                     f"- {row[1] if lang == 'fa' else row[0]} (خرید: {row[2]})"
-                    for row in lands
-                ) if lands else None
+                    for row in seeds
+                ) if seeds else None
 
-                # Get referral profit
+                # گرفتن سود رفرال فقط برای referrer_id خاص
                 c.execute('''
                     SELECT SUM(profit_amount) 
                     FROM referral_profits 
@@ -1165,11 +1009,11 @@ def get_referral_details(referrer_id, referred_id, lang):
                 ''', (referrer_id, referred_id))
                 profit = c.fetchone()[0] or 0.0
 
-                # Get transactions
+                # گرفتن تراکنش‌ها
                 c.execute('''
-                    SELECT t.amount, t.network, t.status, t.type, t.created_at, l.name, l.name_fa
+                    SELECT t.amount, t.network, t.status, t.type, t.created_at, s.name, s.name_fa
                     FROM transactions t
-                    LEFT JOIN lands l ON t.land_id = l.land_id
+                    LEFT JOIN seeds s ON t.seed_id = s.seed_id
                     WHERE t.user_id = %s AND t.type = 'deposit' AND t.status = 'confirmed'
                     ORDER BY t.created_at DESC
                     LIMIT 10
@@ -1183,13 +1027,13 @@ def get_referral_details(referrer_id, referred_id, lang):
                 return {
                     "username": username,
                     "join_date": join_date,
-                    "seeds": lands_text,  # Renamed to maintain compatibility
+                    "seeds": seeds_text,
                     "profit": profit,
                     "transactions": transactions_text
                 }
     except Exception as e:
         logger.error(f"Error getting referral details for referrer {referrer_id}, referred {referred_id}: {e}")
-        return None
+        return None    
 
 def update_balance(user_id, amount):
     """Update user balance."""
@@ -1211,47 +1055,47 @@ def update_balance(user_id, amount):
         logger.error(f"Error updating balance for user {user_id}: {e}", exc_info=True)
         raise
 
-def insert_transaction(user_id, amount, network, status, type, message_id, address=None, land_id=None):
-    """Insert a transaction into the database using land_id."""
+def insert_transaction(user_id, amount, network, status, type, message_id, address=None, seed_id=None):
+    """Insert a transaction into the database."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 created_at = dt.datetime.now(dt.UTC).isoformat()
                 c.execute('''
-                    INSERT INTO transactions (user_id, amount, network, status, type, created_at, message_id, address, land_id)
+                    INSERT INTO transactions (user_id, amount, network, status, type, created_at, message_id, address, seed_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
-                ''', (user_id, amount, network, status, type, created_at, message_id, address, land_id))
+                ''', (user_id, amount, network, status, type, created_at, message_id, address, seed_id))
                 transaction_id = c.fetchone()[0]
                 conn.commit()
-                logger.info(f"Inserted transaction for user {user_id}: amount {amount}, network {network}, status {status}, type {type}, land_id {land_id}, id {transaction_id}")
+                logger.info(f"Inserted transaction for user {user_id}: amount {amount}, network {network}, status {status}, type {type}, seed_id {seed_id}, id {transaction_id}")
                 return transaction_id
     except Exception as e:
         logger.error(f"Error inserting transaction for user {user_id}: {e}")
         raise
 
-def insert_profit(user_id, land_id, amount, period):
-    """Insert a profit record into the database using land_id."""
+def insert_profit(user_id, seed_id, amount, period):
+    """Insert a profit record into the database."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # Check if profit already recorded for this land today
+                # Check if profit already recorded for this seed today
                 today = datetime.now(pytz.timezone('Asia/Tehran')).date().isoformat()
                 c.execute('''
                     SELECT COUNT(*) FROM profits
-                    WHERE user_id = %s AND land_id = %s AND period = %s
+                    WHERE user_id = %s AND seed_id = %s AND period = %s
                     AND DATE(created_at) = %s
-                ''', (user_id, land_id, period, today))
+                ''', (user_id, seed_id, period, today))
                 if c.fetchone()[0] > 0:
-                    logger.warning(f"Profit already recorded for user {user_id}, land_id {land_id} today")
+                    logger.warning(f"Profit already recorded for user {user_id}, seed_id {seed_id} today")
                     return
                 created_at = dt.datetime.now(dt.UTC).isoformat()
                 c.execute('''
-                    INSERT INTO profits (user_id, land_id, amount, period, created_at)
+                    INSERT INTO profits (user_id, seed_id, amount, period, created_at)
                     VALUES (%s, %s, %s, %s, %s)
-                ''', (user_id, land_id, amount, period, created_at))
+                ''', (user_id, seed_id, amount, period, created_at))
                 conn.commit()
-                logger.info(f"Inserted profit for user {user_id}: land_id {land_id}, amount {amount}, period {period}")
+                logger.info(f"Inserted profit for user {user_id}: seed_id {seed_id}, amount {amount}, period {period}")
     except Exception as e:
         logger.error(f"Error inserting profit for user {user_id}: {e}")
         raise
@@ -1288,14 +1132,14 @@ def get_transaction(transaction_id):
         return None
 
 def get_transaction_history(user_id):
-    """Retrieve transaction history for a user using lands."""
+    """Retrieve transaction history for a user."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('''
-                    SELECT t.amount, t.network, t.status, t.type, t.created_at, l.name, l.name_fa
+                    SELECT t.amount, t.network, t.status, t.type, t.created_at, s.name, s.name_fa
                     FROM transactions t
-                    LEFT JOIN lands l ON t.land_id = l.land_id
+                    LEFT JOIN seeds s ON t.seed_id = s.seed_id
                     WHERE t.user_id = %s
                     ORDER BY t.created_at DESC
                     LIMIT 10
@@ -1305,7 +1149,7 @@ def get_transaction_history(user_id):
                 return transactions
     except Exception as e:
         logger.error(f"Error getting transaction history for user {user_id}: {e}")
-        raise
+        return []
 
 def add_referral(referrer_id, referred_id, level):
     """Add a referral entry."""
@@ -1482,24 +1326,22 @@ def has_referrals(user_id):
         logger.error(f"Error checking referrals for user {user_id}: {e}")
         return False
 
-def get_user_lands(user_id):
-    """Retrieve all lands owned by a user."""
+def get_user_seeds(user_id):
+    """Retrieve all seeds owned by a user."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
                 c.execute('''
-                    SELECT l.land_id, l.name, l.name_fa, l.price, l.daily_profit_rate, 
-                           l.seed_count, us.last_planted, us.last_harvested, us.id
-                    FROM user_lands us
-                    JOIN lands l ON us.land_id = l.land_id
+                    SELECT s.name, s.name_fa, s.price, s.daily_profit_rate, 
+                           us.last_planted, us.last_harvested, us.id
+                    FROM user_seeds us
+                    JOIN seeds s ON us.seed_id = s.seed_id
                     WHERE us.user_id = %s
                 ''', (user_id,))
-                lands = c.fetchall()
-                logger.info(f"Retrieved {len(lands)} lands for user {user_id}")
-                return lands
+                return c.fetchall()
     except Exception as e:
-        logger.error(f"Error getting lands for user {user_id}: {e}")
-        return []
+        logger.error(f"Error getting seeds for user {user_id}: {e}")
+        return []    
 
 def get_user_seed(user_id, user_seed_id):
     """Retrieve a specific user seed by user_seed_id."""
@@ -2300,60 +2142,59 @@ async def test_referral_profit(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode="Markdown"
         )    
 
-async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle land selection for purchase."""
+async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed selection for purchase."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
     balance = user[1] if user else 0
-    logger.info(f"User {user_id} triggered land selection callback: {query.data}")
+    logger.info(f"User {user_id} triggered seed selection callback: {query.data}")
 
     try:
-        if query.data.startswith("land_"):
-            land_idx = int(query.data.split("_")[1])
-            if land_idx < 0 or land_idx >= len(LANDS):
-                logger.warning(f"Invalid land index {land_idx} for user {user_id}")
+        if query.data.startswith("seed_"):
+            seed_idx = int(query.data.split("_")[1])
+            if seed_idx < 0 or seed_idx >= len(SEEDS):
+                logger.warning(f"Invalid seed index {seed_idx} for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["error"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-            land = LANDS[land_idx]
-            daily_profit = round(land["price"] * land["daily_profit_rate"] * land["seed_count"], 3)
+            seed = SEEDS[seed_idx]
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
             weekly_profit = round(daily_profit * 7, 3)
             monthly_profit = round(daily_profit * 30, 3)
-            total_monthly = round(land["price"] + monthly_profit, 3)
-            context.user_data["land_idx"] = land_idx
-            context.user_data["land_price"] = land["price"]
+            total_monthly = round(seed["price"] + monthly_profit, 3)
+            context.user_data["seed_idx"] = seed_idx
+            context.user_data["seed_price"] = seed["price"]
             buttons = [
-                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_land_purchase")]
+                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_seed_purchase")]
             ]
-            if balance >= land["price"]:
+            if balance >= seed["price"]:
                 buttons.insert(0, [InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
             buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
             await query.message.reply_text(
-                messages[lang]["land_info"](
-                    land["name_fa" if lang == "fa" else "name"],
-                    land["price"],
+                messages[lang]["seed_info"](
+                    seed["name_fa" if lang == "fa" else "name"],
+                    seed["price"],
                     daily_profit,
                     weekly_profit,
                     monthly_profit,
                     total_monthly,
-                    land["seed_count"],
-                    land["emoji"]
+                    seed["emoji"]
                 ),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
-            return SELECT_LAND
-        elif query.data == "confirm_land_purchase":
-            land_idx = context.user_data.get("land_idx")
-            land_price = context.user_data.get("land_price")
-            if land_idx is None or land_price is None:
-                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+            return SELECT_SEED
+        elif query.data == "confirm_seed_purchase":
+            seed_idx = context.user_data.get("seed_idx")
+            seed_price = context.user_data.get("seed_price")
+            if seed_idx is None or seed_price is None:
+                logger.warning(f"Missing seed_idx or seed_price for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
@@ -2361,7 +2202,7 @@ async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 return ConversationHandler.END
             await query.message.reply_text(
-                messages[lang]["ask_amount"].format(land_price),
+                messages[lang]["ask_amount"].format(seed_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
@@ -2369,31 +2210,30 @@ async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return DEPOSIT_AMOUNT
         elif query.data == "balance_purchase":
-            land_idx = context.user_data.get("land_idx")
-            land_price = context.user_data.get("land_price")
-            if land_idx is None or land_price is None:
-                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+            seed_idx = context.user_data.get("seed_idx")
+            seed_price = context.user_data.get("seed_price")
+            if seed_idx is None or seed_price is None:
+                logger.warning(f"Missing seed_idx or seed_price for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-            land = LANDS[land_idx]
-            daily_profit = round(land["price"] * land["daily_profit_rate"] * land["seed_count"], 3)
+            seed = SEEDS[seed_idx]
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
             weekly_profit = round(daily_profit * 7, 3)
             monthly_profit = round(daily_profit * 30, 3)
-            total_monthly = round(land["price"] + monthly_profit, 3)
+            total_monthly = round(seed["price"] + monthly_profit, 3)
             await query.message.reply_text(
-                messages[lang]["land_info"](
-                    land["name_fa" if lang == "fa" else "name"],
-                    land["price"],
+                messages[lang]["seed_info"](
+                    seed["name_fa" if lang == "fa" else "name"],
+                    seed["price"],
                     daily_profit,
                     weekly_profit,
                     monthly_profit,
                     total_monthly,
-                    land["seed_count"],
-                    land["emoji"]
+                    seed["emoji"]
                 ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
@@ -2411,7 +2251,7 @@ async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return ConversationHandler.END
     except Exception as e:
-        logger.error(f"Error in handle_land_selection for user {user_id}: {e}")
+        logger.error(f"Error in handle_seed_selection for user {user_id}: {e}")
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
@@ -2419,7 +2259,7 @@ async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TY
         )
         await context.bot.send_message(
             chat_id=DEFAULT_ADMIN_ID,
-            text=f"⚠️ *Error in handle_land_selection for user {user_id}*: {str(e)}",
+            text=f"⚠️ *Error in handle_seed_selection for user {user_id}*: {str(e)}",
             parse_mode="Markdown"
         )
         context.user_data.clear()
@@ -2522,28 +2362,28 @@ async def handle_balance_purchase(update: Update, context: ContextTypes.DEFAULT_
         context.user_data.clear()
         return ConversationHandler.END    
 
-async def handle_plant_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle land planting."""
+async def handle_plant_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed planting."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"User {user_id} triggered plant land callback: {query.data}")
+    logger.info(f"User {user_id} triggered plant seed callback: {query.data}")
 
     try:
         if query.data.startswith("plant_"):
-            user_land_id = int(query.data.split("_")[1])
-            user_lands = get_user_lands(user_id)
-            land = next((l for l in user_lands if l[6] == user_land_id), None)
-            if not land or not can_plant_land(land[4]):
+            user_seed_id = int(query.data.split("_")[1])
+            user_seeds = get_user_seeds(user_id)
+            seed = next((s for s in user_seeds if s[6] == user_seed_id), None)
+            if not seed or not can_plant_seed(seed[4]):
                 await query.message.reply_text(
                     messages[lang]["plant_already_done"],
                     parse_mode="Markdown",
                     reply_markup=get_wallet_menu(lang, user[1], True)
                 )
                 return ConversationHandler.END
-            update_land_plant(user_id, user_land_id)
+            update_seed_plant(user_id, user_seed_id)
             await query.message.reply_text(
                 messages[lang]["plant_success"],
                 parse_mode="Markdown",
@@ -2557,23 +2397,23 @@ async def handle_plant_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     with conn.cursor() as c:
                         # جمع سود از جدول profits
                         c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
-                        land_profit = c.fetchone()[0] or 0.0
+                        seed_profit = c.fetchone()[0] or 0.0
                         # جمع سود از جدول referral_profits
                         c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
                         referral_profit = c.fetchone()[0] or 0.0
-                        total_profit = land_profit + referral_profit
+                        total_profit = seed_profit + referral_profit
                         c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
                         transaction_count = c.fetchone()[0]
                         c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
                         last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
                         c.execute('''
-                            SELECT l.name, l.name_fa
-                            FROM user_lands ul
-                            JOIN lands l ON ul.land_id = l.land_id
-                            WHERE ul.user_id = %s
+                            SELECT s.name, s.name_fa
+                            FROM user_seeds us
+                            JOIN seeds s ON us.seed_id = s.seed_id
+                            WHERE us.user_id = %s
                         ''', (user_id,))
-                        lands = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        lands_text = ", ".join(lands) if lands else None
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
             except psycopg2.Error as e:
                 logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
                 await query.message.reply_text(
@@ -2584,13 +2424,13 @@ async def handle_plant_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return ConversationHandler.END
 
             await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, lands_text, total_profit, transaction_count, last_transaction),
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
                 parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(lands))
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
             )
             return ConversationHandler.END
         else:
-            logger.warning(f"Unhandled plant land callback data for user {user_id}: {query.data}")
+            logger.warning(f"Unhandled plant seed callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
@@ -2598,7 +2438,7 @@ async def handle_plant_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return ConversationHandler.END
     except Exception as e:
-        logger.error(f"Error in handle_plant_land for user {user_id}: {e}")
+        logger.error(f"Error in handle_plant_seed for user {user_id}: {e}")
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
@@ -2606,228 +2446,115 @@ async def handle_plant_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data.clear()
         return ConversationHandler.END
-    
-async def handle_harvest_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle harvesting profit from a specific land."""
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    user = get_user(user_id)
-    if not user:
-        await query.message.reply_text(
-            messages["en"]["unauthorized"],
-            parse_mode="Markdown"
-        )
-        return ConversationHandler.END
-    lang = user[0]
-    user_land_id = int(query.data.split("_")[1])
-    logger.info(f"User {user_id} attempting to harvest land {user_land_id}")
 
-    try:
-        with psycopg2.connect(DATABASE_URL) as conn:
-            with conn.cursor() as c:
-                # Verify land ownership
-                c.execute('''
-                    SELECT ul.land_id, ul.last_planted, l.daily_profit_rate, l.seed_count
-                    FROM user_lands ul
-                    JOIN lands l ON ul.land_id = l.land_id
-                    WHERE ul.id = %s AND ul.user_id = %s
-                ''', (user_land_id, user_id))
-                land_info = c.fetchone()
-                if not land_info:
-                    await query.message.reply_text(
-                        messages[lang]["no_land"],
-                        parse_mode="Markdown",
-                        reply_markup=get_main_menu(lang)
-                    )
-                    return ConversationHandler.END
-
-                land_id, last_planted, daily_profit_rate, seed_count = land_info
-
-                # Check if land was planted
-                if not last_planted:
-                    await query.message.reply_text(
-                        messages[lang]["land_not_planted"],
-                        parse_mode="Markdown",
-                        reply_markup=get_main_menu(lang)
-                    )
-                    return ConversationHandler.END
-
-                # Check if it's time to harvest
-                last_planted_dt = datetime.fromisoformat(last_planted)
-                tehran_tz = pytz.timezone('Asia/Tehran')
-                now = datetime.now(tehran_tz)
-                midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                if last_planted_dt.date() >= midnight.date():
-                    await query.message.reply_text(
-                        messages[lang]["harvest_not_ready"],
-                        parse_mode="Markdown",
-                        reply_markup=get_main_menu(lang)
-                    )
-                    return ConversationHandler.END
-
-                # Calculate profit
-                profit = round(daily_profit_rate * seed_count, 2)
-                if profit <= 0:
-                    await query.message.reply_text(
-                        messages[lang]["no_profit"],
-                        parse_mode="Markdown",
-                        reply_markup=get_main_menu(lang)
-                    )
-                    return ConversationHandler.END
-
-                # Update balance and record profit
-                update_balance(user_id, profit)
-                c.execute('''
-                    INSERT INTO profits (user_id, land_id, amount, period, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                ''', (user_id, land_id, profit, "daily", datetime.now(tehran_tz).isoformat()))
-                c.execute('''
-                    UPDATE user_lands
-                    SET last_harvested = %s
-                    WHERE id = %s AND ul.user_id = %s
-                ''', (datetime.now(tehran_tz).isoformat(), user_land_id, user_id))
-                conn.commit()
-
-        await query.message.reply_text(
-            messages[lang]["harvest_success"](profit),
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
-        )
-        logger.info(f"User {user_id} successfully harvested {profit} USDT from land {user_land_id}")
-        return ConversationHandler.END
-    except Exception as e:
-        logger.error(f"Error harvesting land {user_land_id} for user {user_id}: {e}")
-        await query.message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
-        )
-        return ConversationHandler.END    
-
-async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle land selection for purchase."""
+async def handle_harvest_seed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed harvesting by user."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
     balance = user[1] if user else 0
-    logger.info(f"User {user_id} triggered land selection callback: {query.data}")
+    logger.info(f"User {user_id} triggered harvest seed callback: {query.data}")
 
     try:
-        if query.data.startswith("land_"):
-            land_idx = int(query.data.split("_")[1])
-            if land_idx < 0 or land_idx >= len(LANDS):
-                logger.warning(f"Invalid land index {land_idx} for user {user_id}")
+        if query.data.startswith("harvest_"):
+            user_seed_id = int(query.data.split("_")[1])
+            user_seed = get_user_seed(user_id, user_seed_id)
+            if not user_seed:
+                logger.warning(f"User {user_id} does not own seed with user_seed_id {user_seed_id}")
                 await query.message.reply_text(
-                    messages[lang]["error"],
+                    messages[lang]["no_seed"],
                     parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
+                    reply_markup=get_wallet_menu(lang, balance, True)
                 )
                 return ConversationHandler.END
-            land = LANDS[land_idx]
-            daily_profit = round(land["price"] * land["daily_profit_rate"] * land["seed_count"], 3)
-            weekly_profit = round(daily_profit * 7, 3)
-            monthly_profit = round(daily_profit * 30, 3)
-            total_monthly = round(land["price"] + monthly_profit, 3)
-            context.user_data["land_idx"] = land_idx
-            context.user_data["land_price"] = land["price"]
+
+            seed_id, last_planted, last_harvested, price, daily_profit_rate = user_seed
+            logger.info(f"Checking harvest for user {user_id}, seed_id {seed_id}, user_seed_id {user_seed_id}")
+
+            if not can_harvest_seed(last_planted, last_harvested, seed_id):
+                logger.info(f"Seed {seed_id} not ready for harvest by user {user_id}")
+                await query.message.reply_text(
+                    messages[lang]["harvest_not_ready"],
+                    parse_mode="Markdown",
+                    reply_markup=get_wallet_menu(lang, balance, True)
+                )
+                return ConversationHandler.END
+
+            profit_amount = round(price * daily_profit_rate, 3)
+            logger.info(f"Calculated profit for user {user_id}, seed_id {seed_id}: {profit_amount}")
+
+            update_seed_harvest(user_id, user_seed_id)
+            update_balance(user_id, profit_amount)
+            insert_profit(user_id, seed_id, profit_amount, "daily")
+
+            user_seeds = get_user_seeds(user_id)
             buttons = [
-                [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_land_purchase")]
+                [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"harvest_{seed[6]}")]
+                for seed in user_seeds if can_harvest_seed(seed[4], seed[5], seed_id=seed[6])
             ]
-            if balance >= land["price"]:
-                buttons.insert(0, [InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
-            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
+            buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="wallet")])
             await query.message.reply_text(
-                messages[lang]["land_info"](
-                    land["name_fa" if lang == "fa" else "name"],
-                    land["price"],
-                    daily_profit,
-                    weekly_profit,
-                    monthly_profit,
-                    total_monthly,
-                    land["seed_count"],
-                    land["emoji"]
-                ),
+                messages[lang]["harvest_success"](profit_amount),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
-            return SELECT_LAND
-        elif query.data == "confirm_land_purchase":
-            land_idx = context.user_data.get("land_idx")
-            land_price = context.user_data.get("land_price")
-            if land_idx is None or land_price is None:
-                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+            logger.info(f"Sent harvest success message to user {user_id}")
+            return HARVEST_SEED
+        elif query.data == "wallet":
+            try:
+                with psycopg2.connect(DATABASE_URL) as conn:
+                    with conn.cursor() as c:
+                        # جمع سود از جدول profits
+                        c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (user_id,))
+                        seed_profit = c.fetchone()[0] or 0.0
+                        # جمع سود از جدول referral_profits
+                        c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (user_id,))
+                        referral_profit = c.fetchone()[0] or 0.0
+                        total_profit = seed_profit + referral_profit
+                        c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (user_id, 'confirmed'))
+                        transaction_count = c.fetchone()[0]
+                        c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (user_id, 'confirmed'))
+                        last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
+                        c.execute('''
+                            SELECT s.name, s.name_fa
+                            FROM user_seeds us
+                            JOIN seeds s ON us.seed_id = s.seed_id
+                            WHERE us.user_id = %s
+                        ''', (user_id,))
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
+            except psycopg2.Error as e:
+                logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
                 await query.message.reply_text(
-                    messages[lang]["invalid_data"],
+                    messages[lang]["db_error"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
+
             await query.message.reply_text(
-                messages[lang]["ask_amount"].format(land_price),
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
                 parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
             )
-            return DEPOSIT_AMOUNT
-        elif query.data == "balance_purchase":
-            land_idx = context.user_data.get("land_idx")
-            land_price = context.user_data.get("land_price")
-            if land_idx is None or land_price is None:
-                logger.warning(f"Missing land_idx or land_price for user {user_id}")
-                await query.message.reply_text(
-                    messages[lang]["invalid_data"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                return ConversationHandler.END
-            land = LANDS[land_idx]
-            daily_profit = round(land["price"] * land["daily_profit_rate"] * land["seed_count"], 3)
-            weekly_profit = round(daily_profit * 7, 3)
-            monthly_profit = round(daily_profit * 30, 3)
-            total_monthly = round(land["price"] + monthly_profit, 3)
-            await query.message.reply_text(
-                messages[lang]["land_info"](
-                    land["name_fa" if lang == "fa" else "name"],
-                    land["price"],
-                    daily_profit,
-                    weekly_profit,
-                    monthly_profit,
-                    total_monthly,
-                    land["seed_count"],
-                    land["emoji"]
-                ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ تأیید" if lang == "fa" else "✅ Confirm", callback_data="confirm_balance_purchase")],
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
-            )
-            return CONFIRM_BALANCE_PURCHASE
+            return ConversationHandler.END
         else:
-            logger.warning(f"Unhandled callback data for user {user_id}: {query.data}")
+            logger.warning(f"Unhandled harvest seed callback data for user {user_id}: {query.data}")
             await query.message.reply_text(
                 messages[lang]["error"],
                 parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
+                reply_markup=get_wallet_menu(lang, balance, True)
             )
             return ConversationHandler.END
     except Exception as e:
-        logger.error(f"Error in handle_land_selection for user {user_id}: {e}")
+        logger.error(f"Error in handle_harvest_seed for user {user_id}: {e}")
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
+            reply_markup=get_wallet_menu(lang, balance, True)
         )
-        await context.bot.send_message(
-            chat_id=DEFAULT_ADMIN_ID,
-            text=f"⚠️ *Error in handle_land_selection for user {user_id}*: {str(e)}",
-            parse_mode="Markdown"
-        )
-        context.user_data.clear()
         return ConversationHandler.END
     
 async def check_seeds(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4050,8 +3777,8 @@ async def handle_ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-async def handle_land_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle land action selection (add/remove)."""
+async def handle_seed_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle seed action selection (add/remove)."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -4060,11 +3787,11 @@ async def handle_land_action(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ConversationHandler.END
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    logger.info(f"Admin {user_id} selected land action: {query.data}")
+    logger.info(f"Admin {user_id} selected seed action: {query.data}")
 
-    if query.data in ["add_land", "remove_land"]:
-        context.user_data["land_action"] = query.data
-        context.user_data["manage_action"] = "manage_lands"  # Context for land management
+    if query.data in ["add_seed", "remove_seed"]:
+        context.user_data["seed_action"] = query.data
+        context.user_data["manage_action"] = "manage_seeds"  # اضافه کردن کنتکست
         await query.message.reply_text(
             messages[lang]["ask_user_id"],
             parse_mode="Markdown",
@@ -4464,22 +4191,22 @@ async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return MANAGE_USERS
 
 async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Display detailed information about a selected user using lands."""
+    """Display detailed information about a selected user."""
     query = update.callback_query
-    query.answer()
+    await query.answer()
     user_id = query.from_user.id
     if user_id != DEFAULT_ADMIN_ID:
-        query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
+        await query.message.reply_text(messages["en"]["unauthorized"], parse_mode="Markdown")
         return ConversationHandler.END
     user = get_user(user_id)
     lang = user[0] if user else "en"
-    target_user_id = int(query.data.split("_")[2])
+    target_user_id = int(query.data.split("_")[2])  # گرفتن user_id از callback_data
     logger.info(f"Admin {user_id} viewing details for user {target_user_id}")
 
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # Get user info
+                # گرفتن اطلاعات کاربر
                 c.execute('''
                     SELECT user_id, username, balance, created_at
                     FROM users
@@ -4487,7 +4214,7 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ''', (target_user_id,))
                 user_info = c.fetchone()
                 if not user_info:
-                    query.message.reply_text(
+                    await query.message.reply_text(
                         messages[lang]["invalid_user_id"],
                         parse_mode="Markdown",
                         reply_markup=InlineKeyboardMarkup([
@@ -4498,32 +4225,32 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 user_id, username, balance, created_at = user_info
 
-                # Get lands
+                # گرفتن بذرها
                 c.execute('''
-                    SELECT l.name, l.name_fa
-                    FROM user_lands ul
-                    JOIN lands l ON ul.land_id = l.land_id
-                    WHERE ul.user_id = %s
+                    SELECT s.name, s.name_fa
+                    FROM user_seeds us
+                    JOIN seeds s ON us.seed_id = s.seed_id
+                    WHERE us.user_id = %s
                 ''', (target_user_id,))
-                lands = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                lands_text = ", ".join(lands) if lands else "هیچ زمینی ندارد" if lang == "fa" else "No lands yet"
+                seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                seeds_text = ", ".join(seeds) if seeds else "هیچ بذری ندارد" if lang == "fa" else "No seeds yet"
 
-                # Get total profit
+                # گرفتن سود کل
                 c.execute('SELECT SUM(amount) FROM profits WHERE user_id = %s', (target_user_id,))
-                land_profit = c.fetchone()[0] or 0.0
+                seed_profit = c.fetchone()[0] or 0.0
                 c.execute('SELECT SUM(profit_amount) FROM referral_profits WHERE referrer_id = %s', (target_user_id,))
                 referral_profit = c.fetchone()[0] or 0.0
-                total_profit = land_profit + referral_profit
+                total_profit = seed_profit + referral_profit
 
-                # Get transaction count
+                # گرفتن تعداد تراکنش‌های موفق
                 c.execute('SELECT COUNT(*) FROM transactions WHERE user_id = %s AND status = %s', (target_user_id, 'confirmed'))
                 transaction_count = c.fetchone()[0]
 
-                # Get last transaction
+                # گرفتن آخرین تراکنش
                 c.execute('SELECT created_at FROM transactions WHERE user_id = %s AND status = %s ORDER BY created_at DESC LIMIT 1', (target_user_id, 'confirmed'))
                 last_transaction = c.fetchone()[0] if c.rowcount > 0 else None
 
-                # Get referral counts
+                # گرفتن تعداد رفرال‌ها
                 c.execute('''
                     SELECT level, COUNT(*)
                     FROM referrals
@@ -4541,7 +4268,7 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📛 *یوزرنیم*: @{username or 'بدون یوزرنیم'}\n"
             f"📅 *تاریخ ثبت‌نام*: {created_at}\n"
             f"💰 *موجودی*: `{balance}` تتر\n"
-            f"🌱 *زمین‌ها*: {lands_text}\n"
+            f"🌱 *بذرها*: {seeds_text}\n"
             f"📈 *کل سود کسب‌شده*: `{total_profit}` تتر\n"
             f"📝 *تراکنش‌های موفق*: `{transaction_count}`\n"
             f"⏰ *آخرین تراکنش*: {'ندارد' if not last_transaction else last_transaction}\n"
@@ -4557,7 +4284,7 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📛 *Username*: @{username or 'No Username'}\n"
             f"📅 *Join Date*: {created_at}\n"
             f"💰 *Balance*: `{balance}` USDT\n"
-            f"🌱 *Lands*: {lands_text}\n"
+            f"🌱 *Seeds*: {seeds_text}\n"
             f"📈 *Total Profit Earned*: `{total_profit}` USDT\n"
             f"📝 *Successful Transactions*: `{transaction_count}`\n"
             f"⏰ *Last Transaction*: {'None' if not last_transaction else last_transaction}\n"
@@ -4568,7 +4295,7 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
         )
 
-        query.message.reply_text(
+        await query.message.reply_text(
             response,
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
@@ -4578,14 +4305,14 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return VIEW_USERS
     except Exception as e:
         logger.error(f"Error in view_user_details for admin {user_id}, user {target_user_id}: {e}")
-        query.message.reply_text(
+        await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="view_users")]
             ])
         )
-        return VIEW_USERS
+        return VIEW_USERS 
 
 async def debug_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log all callback queries for debugging."""
@@ -4625,6 +4352,10 @@ def main():
     logger.info("Building Telegram application")
     app = ApplicationBuilder().token(token).build()
 
+    # Run fix_database for user 5664533861 at startup
+    logger.info("Running fix_database for user 5664533861")
+    fix_database(5664533861)
+    logger.info("Ran fix_database for user 5664533861")
 
     # Define conversation handler
     conv_handler = ConversationHandler(
@@ -4632,31 +4363,31 @@ def main():
             CommandHandler("start", start),
             CallbackQueryHandler(
                 handle_menu_callback,
-                pattern=r"^(buy_land|wallet|referral|language|support|withdraw|history|plant_land|harvest_land|referral_\d+)$"
+                pattern=r"^(buy_seed|wallet|referral|language|support|withdraw|history|plant_seed|harvest_seed|referral_\d+)$"
             ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
-            CallbackQueryHandler(handle_land_selection, pattern=r"^(land_\d+|confirm_land_purchase|balance_purchase)$"),
+            CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"),
             CallbackQueryHandler(handle_deposit_network, pattern=r"^network_.*$"),
-            CallbackQueryHandler(handle_plant_land, pattern=r"^plant_\d+$"),
-            CallbackQueryHandler(handle_harvest_land, pattern=r"^harvest_\d+$"),
+            CallbackQueryHandler(handle_plant_seed, pattern=r"^plant_\d+$"),
+            CallbackQueryHandler(handle_harvest_seed, pattern=r"^harvest_\d+$"),
             CallbackQueryHandler(handle_admin_action, pattern=r"^(approve|reject)_\d+$"),
             CallbackQueryHandler(handle_balance_purchase, pattern=r"^confirm_balance_purchase$"),
             CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
-            CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_lands|manage_balance)$"),
+            CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
             CallbackQueryHandler(handle_ban_user, pattern=r"^confirm_ban$"),
-            CallbackQueryHandler(handle_land_action, pattern=r"^(add_land|remove_land)$"),
-            CallbackQueryHandler(handle_land_selection_admin, pattern=r"^(add_land_\d+|remove_land_\d+)$"),
+            CallbackQueryHandler(handle_seed_action, pattern=r"^(add_seed|remove_seed)$"),
+            CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^(add_seed_\d+|remove_seed_\d+)$"),
             CallbackQueryHandler(handle_balance_action, pattern=r"^(add_balance|subtract_balance)$"),
             CallbackQueryHandler(view_users, pattern=r"^view_users$"),
             CallbackQueryHandler(view_users, pattern=r"^page_\d+$"),
             CallbackQueryHandler(view_user_details, pattern=r"^view_user_\d+$"),
         ],
         states={
-            SELECT_LAND: [
+            SELECT_SEED: [
                 CallbackQueryHandler(
-                    handle_land_selection,
-                    pattern=r"^(land_\d+|confirm_land_purchase|balance_purchase)$"
+                    handle_seed_selection,
+                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"
                 ),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
@@ -4690,16 +4421,16 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_withdraw_address),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
-            PLANT_LAND: [
+            PLANT_SEED: [
                 CallbackQueryHandler(
-                    handle_plant_land,
+                    handle_plant_seed,
                     pattern=r"^plant_\d+$"
                 ),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
-            HARVEST_LAND: [
+            HARVEST_SEED: [
                 CallbackQueryHandler(
-                    handle_harvest_land,
+                    handle_harvest_seed,
                     pattern=r"^harvest_\d+$"
                 ),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
@@ -4712,7 +4443,7 @@ def main():
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             MANAGE_USERS: [
-                CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_lands|manage_balance)$"),
+                CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(view_users, pattern=r"^view_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
@@ -4722,7 +4453,7 @@ def main():
                 CallbackQueryHandler(view_user_details, pattern=r"^view_user_\d+$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
-            ],
+            ],    
             ENTER_USER_ID: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_common),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
@@ -4733,18 +4464,18 @@ def main():
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
-            LAND_ACTION: [
-                CallbackQueryHandler(handle_land_action, pattern=r"^(add_land|remove_land)$"),
+            SEED_ACTION: [
+                CallbackQueryHandler(handle_seed_action, pattern=r"^(add_seed|remove_seed)$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
-            SELECT_LAND_ADD: [
-                CallbackQueryHandler(handle_land_selection_admin, pattern=r"^add_land_\d+$"),
+            SELECT_SEED_ADD: [
+                CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^add_seed_\d+$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
-            SELECT_LAND_REMOVE: [
-                CallbackQueryHandler(handle_land_selection_admin, pattern=r"^remove_land_\d+$"),
+            SELECT_SEED_REMOVE: [
+                CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^remove_seed_\d+$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
@@ -4784,11 +4515,12 @@ def main():
     app.add_handler(CommandHandler("test_approve", test_approve))
     app.add_handler(CommandHandler("db_test", db_test))
     app.add_handler(CommandHandler("admintest", admin_test))
-    app.add_handler(CommandHandler("checklands", check_lands))
+    app.add_handler(CommandHandler("checkseeds", check_seeds))
     app.add_handler(CommandHandler("test_referral_profit", test_referral_profit))
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
     app.add_handler(CommandHandler("debug_balance", debug_balance))
+    app.add_handler(CallbackQueryHandler(debug_callback))
     app.add_handler(CallbackQueryHandler(debug_callback))
     app.add_handler(conv_handler)
 
