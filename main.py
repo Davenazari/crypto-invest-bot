@@ -2606,6 +2606,104 @@ async def handle_plant_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data.clear()
         return ConversationHandler.END
+    
+async def handle_harvest_land(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle harvesting profit from a specific land."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    user = get_user(user_id)
+    if not user:
+        await query.message.reply_text(
+            messages["en"]["unauthorized"],
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    lang = user[0]
+    user_land_id = int(query.data.split("_")[1])
+    logger.info(f"User {user_id} attempting to harvest land {user_land_id}")
+
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as c:
+                # Verify land ownership
+                c.execute('''
+                    SELECT ul.land_id, ul.last_planted, l.daily_profit_rate, l.seed_count
+                    FROM user_lands ul
+                    JOIN lands l ON ul.land_id = l.land_id
+                    WHERE ul.id = %s AND ul.user_id = %s
+                ''', (user_land_id, user_id))
+                land_info = c.fetchone()
+                if not land_info:
+                    await query.message.reply_text(
+                        messages[lang]["no_land"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+
+                land_id, last_planted, daily_profit_rate, seed_count = land_info
+
+                # Check if land was planted
+                if not last_planted:
+                    await query.message.reply_text(
+                        messages[lang]["land_not_planted"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+
+                # Check if it's time to harvest
+                last_planted_dt = datetime.fromisoformat(last_planted)
+                tehran_tz = pytz.timezone('Asia/Tehran')
+                now = datetime.now(tehran_tz)
+                midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                if last_planted_dt.date() >= midnight.date():
+                    await query.message.reply_text(
+                        messages[lang]["harvest_not_ready"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+
+                # Calculate profit
+                profit = round(daily_profit_rate * seed_count, 2)
+                if profit <= 0:
+                    await query.message.reply_text(
+                        messages[lang]["no_profit"],
+                        parse_mode="Markdown",
+                        reply_markup=get_main_menu(lang)
+                    )
+                    return ConversationHandler.END
+
+                # Update balance and record profit
+                update_balance(user_id, profit)
+                c.execute('''
+                    INSERT INTO profits (user_id, land_id, amount, period, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                ''', (user_id, land_id, profit, "daily", datetime.now(tehran_tz).isoformat()))
+                c.execute('''
+                    UPDATE user_lands
+                    SET last_harvested = %s
+                    WHERE id = %s AND ul.user_id = %s
+                ''', (datetime.now(tehran_tz).isoformat(), user_land_id, user_id))
+                conn.commit()
+
+        await query.message.reply_text(
+            messages[lang]["harvest_success"](profit),
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        logger.info(f"User {user_id} successfully harvested {profit} USDT from land {user_land_id}")
+        return ConversationHandler.END
+    except Exception as e:
+        logger.error(f"Error harvesting land {user_land_id} for user {user_id}: {e}")
+        await query.message.reply_text(
+            messages[lang]["error"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu(lang)
+        )
+        return ConversationHandler.END    
 
 async def handle_land_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle land selection for purchase."""
