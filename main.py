@@ -4309,7 +4309,13 @@ async def view_user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="view_users")]
             ])
         )
-        return VIEW_USERS        
+        return VIEW_USERS 
+
+async def debug_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log all callback queries for debugging."""
+    query = update.callback_query
+    logger.info(f"Debug: Received callback query with data: {query.data} from user {query.from_user.id}")
+    await query.answer()               
 
 def main():
     """Run the bot."""
@@ -4494,6 +4500,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
     app.add_handler(CommandHandler("debug_balance", debug_balance))
+    app.add_handler(CallbackQueryHandler(debug_callback))
 
     # Start the bot
     logger.info("Starting bot")
