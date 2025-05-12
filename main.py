@@ -2691,13 +2691,20 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     """Handle deposit amount input."""
     user_id = update.effective_user.id
     user = get_user(user_id)
-    lang = user[0] if user else "en"
+    if not user:
+        await update.message.reply_text(
+            messages["en"]["unauthorized"],
+            parse_mode="Markdown",
+            reply_markup=get_main_menu("en")
+        )
+        return ConversationHandler.END
+    lang = user[0]
     land_price = context.user_data.get("land_price")
     input_text = update.message.text.strip()
     logger.info(f"User {user_id} entered deposit amount: '{input_text}'")
 
-    if not seed_price:
-        logger.error(f"No seed_price in user_data for user {user_id}")
+    if not land_price:
+        logger.error(f"No land_price in user_data for user {user_id}")
         await update.message.reply_text(
             messages[lang]["invalid_data"],
             parse_mode="Markdown",
@@ -2708,10 +2715,10 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         amount = float(input_text)
         logger.info(f"Parsed amount for user {user_id}: {amount}")
-        if amount != seed_price:
-            logger.warning(f"Invalid amount entered by user {user_id}: {amount}, expected {seed_price}")
+        if amount != land_price:
+            logger.warning(f"Invalid amount entered by user {user_id}: {amount}, expected {land_price}")
             await update.message.reply_text(
-                messages[lang]["invalid_amount"].format(seed_price),
+                messages[lang]["invalid_amount"].format(land_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
@@ -2733,7 +2740,7 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     except ValueError as e:
         logger.warning(f"Invalid amount format by user {user_id}: '{input_text}', error: {e}")
         await update.message.reply_text(
-            messages[lang]["invalid_amount"].format(seed_price),
+            messages[lang]["invalid_amount"].format(land_price),
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
@@ -2743,66 +2750,6 @@ async def handle_deposit_amount(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         logger.error(f"Error in handle_deposit_amount for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text(
-            messages[lang]["error"],
-            parse_mode="Markdown",
-            reply_markup=get_main_menu(lang)
-        )
-        context.user_data.clear()
-        return ConversationHandler.END
-
-async def handle_deposit_network(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle deposit network selection."""
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    user = get_user(user_id)
-    lang = user[0] if user else "en"
-    logger.info(f"User {user_id} triggered deposit network callback: {query.data}")
-
-    try:
-        if query.data.startswith("network_"):
-            network = query.data.split("_")[1]
-            if network not in wallet_addresses:
-                await query.message.reply_text(
-                    messages[lang]["error"],
-                    parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
-                )
-                return ConversationHandler.END
-            context.user_data["network"] = network
-            await query.message.reply_text(
-                messages[lang]["wallet"](network, wallet_addresses[network]),
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
-            )
-            await query.message.reply_text(
-                messages[lang]["ask_txid"],
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
-                ])
-            )
-            return DEPOSIT_TXID
-        elif query.data == "back_to_menu":
-            context.user_data.clear()
-            await query.message.reply_text(
-                messages[lang]["main_menu"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
-        else:
-            await query.message.reply_text(
-                messages[lang]["error"],
-                parse_mode="Markdown",
-                reply_markup=get_main_menu(lang)
-            )
-            return ConversationHandler.END
-    except Exception as e:
-        logger.error(f"Error in handle_deposit_network for user {user_id}: {e}")
-        await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
             reply_markup=get_main_menu(lang)
