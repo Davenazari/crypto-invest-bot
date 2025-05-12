@@ -1518,39 +1518,23 @@ def can_harvest_seed(last_planted, last_harvested, seed_id=None):
     return now.date() > last_planted_dt.date()
 
 # Menu generation
-def get_main_menu(lang, user_id=None):
-    """Generate the main menu keyboard."""
-    is_admin = user_id == DEFAULT_ADMIN_ID
-    keyboard = [
-        [InlineKeyboardButton(
-            f"🏞️ {'خرید زمین' if lang == 'fa' else 'Buy Land'}",
-            callback_data="buy_seed"
-        )],
-        [InlineKeyboardButton(
-            f"🌾 {'مزرعه من' if lang == 'fa' else 'My Farm'}",
-            callback_data="wallet"
-        )],
-        [InlineKeyboardButton(
-            f"🤝 {'کارگرهای مزرعه' if lang == 'fa' else 'Farm Workers'}",
-            callback_data="referral"
-        )],
-        [InlineKeyboardButton(
-            f"🌐 {'زبان' if lang == 'fa' else 'Language'}",
-            callback_data="language"
-        )],
-        [InlineKeyboardButton(
-            f"📩 {'پشتیبانی' if lang == 'fa' else 'Support'}",
-            callback_data="support"
-        )],
+def get_wallet_menu(lang, balance, has_seeds):
+    """Generate wallet menu keyboard."""
+    buttons = [
+        [
+            InlineKeyboardButton("🌱 کاشت بذر" if lang == "fa" else "🌱 Plant Seed", callback_data="plant_seed"),
+            InlineKeyboardButton("🚜 برداشت سود" if lang == "fa" else "🚜 Harvest Profit", callback_data="harvest_seed")
+        ],
+        [
+            InlineKeyboardButton("🏞️ خرید زمین" if lang == "fa" else "🏞️ Buy Land", callback_data="buy_seed"),
+            InlineKeyboardButton("📜 تاریخچه" if lang == "fa" else "📜 History", callback_data="history")
+        ],
+        [
+            InlineKeyboardButton("💸 برداشت" if lang == "fa" else "💸 Withdraw", callback_data="withdraw")
+        ]
     ]
-    if is_admin:
-        keyboard.append([
-            InlineKeyboardButton(
-                f"👤 {'مدیریت کاربران' if lang == 'fa' else 'Manage Users'}",
-                callback_data="manage_users"
-            )
-        ])
-    return InlineKeyboardMarkup(keyboard)
+    buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
+    return InlineKeyboardMarkup(buttons)
 
 def get_wallet_menu(lang):
     """Generate the wallet menu keyboard."""
