@@ -2181,6 +2181,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
     lang, balance = user
     logger.info(f"User {user_id} triggered land selection callback: {query.data}")
+    logger.info(f"Current context.user_data: {context.user_data}")
 
     try:
         if query.data.startswith("seed_"):
@@ -2210,6 +2211,8 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             monthly_profit = round(daily_profit * 30, 3)
             total_monthly = round(land["price"] + monthly_profit, 3)
             
+            # پاک کردن داده‌های قبلی برای جلوگیری از تداخل
+            context.user_data.clear()
             context.user_data["land_idx"] = land_idx
             context.user_data["land_price"] = land["price"]
             context.user_data["land_name"] = land["name_fa" if lang == "fa" else "name"]
@@ -2254,14 +2257,23 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             logger.debug(f"User {user_id} selected confirm_land_purchase")
             land_idx = context.user_data.get("land_idx")
             land_price = context.user_data.get("land_price")
+            logger.info(f"Processing confirm_land_purchase for user {user_id}, land_idx: {land_idx}, land_price: {land_price}")
             if land_idx is None or land_price is None:
                 logger.warning(f"Missing land_idx or land_price for user {user_id}")
                 await query.message.reply_text(
-                    messages[lang]["invalid_data"],
+                    messages[lang]["select_seed"],
                     parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            land["name_fa" if lang == "fa" else "name"] + f" {land['emoji']}",
+                            callback_data=f"seed_{idx}"
+                        )] for idx, land in enumerate(LANDS)
+                    ] + [[InlineKeyboardButton(
+                        "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+                        callback_data="back_to_menu"
+                    )]])
                 )
-                return ConversationHandler.END
+                return SELECT_SEED
 
             await query.message.reply_text(
                 messages[lang]["ask_amount"].format(land_price),
@@ -2281,14 +2293,22 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             land_price = context.user_data.get("land_price")
             land_name = context.user_data.get("land_name")
             land_emoji = context.user_data.get("land_emoji")
-            if land_idx is None or land_price is None or land_name is None:
-                logger.warning(f"Missing land_idx, land_price, or land_name for user {user_id}")
+            if land_idx is None or land_price is None or land_name is None or land_emoji is None:
+                logger.warning(f"Missing land_idx, land_price, land_name, or land_emoji for user {user_id}")
                 await query.message.reply_text(
-                    messages[lang]["invalid_data"],
+                    messages[lang]["select_seed"],
                     parse_mode="Markdown",
-                    reply_markup=get_main_menu(lang)
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton(
+                            land["name_fa" if lang == "fa" else "name"] + f" {land['emoji']}",
+                            callback_data=f"seed_{idx}"
+                        )] for idx, land in enumerate(LANDS)
+                    ] + [[InlineKeyboardButton(
+                        "🔙 بازگشت" if lang == "fa" else "🔙 Back",
+                        callback_data="back_to_menu"
+                    )]])
                 )
-                return ConversationHandler.END
+                return SELECT_SEED
 
             land = LANDS[land_idx]
             daily_profit = round(land["price"] * land["daily_profit_rate"], 3)
@@ -2332,7 +2352,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             return ConversationHandler.END
 
     except Exception as e:
-        logger.error(f"Error in handle_seed_selection for user {user_id}: {e}")
+        logger.error(f"Error in handle_seed_selection for user {user_id}: {e}", exc_info=True)
         await query.message.reply_text(
             messages[lang]["error"],
             parse_mode="Markdown",
@@ -4418,6 +4438,7 @@ async def debug_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 def main():
     """Run the bot."""
+    logger.info("Starting main function")
     token = os.getenv("BOT_TOKEN")
     if not token:
         logger.error("BOT_TOKEN not found in environment variables")
@@ -4447,7 +4468,10 @@ def main():
                 pattern=r"^(buy_seed|wallet|referral|language|support|withdraw|history|plant_seed|harvest_seed|referral_\d+)$"
             ),
             CallbackQueryHandler(handle_language_callback, pattern=r"^lang_.*$"),
-            CallbackQueryHandler(handle_seed_selection, pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"),
+            CallbackQueryHandler(
+                handle_seed_selection,
+                pattern=r"^(seed_\d+|confirm_land_purchase|balance_purchase)$"
+            ),
             CallbackQueryHandler(handle_deposit_network, pattern=r"^network_.*$"),
             CallbackQueryHandler(handle_plant_seed, pattern=r"^plant_\d+$"),
             CallbackQueryHandler(handle_harvest_seed, pattern=r"^harvest_\d+$"),
@@ -4455,20 +4479,31 @@ def main():
             CallbackQueryHandler(handle_balance_purchase, pattern=r"^confirm_balance_purchase$"),
             CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
-            CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
+            CallbackQueryHandler(
+                handle_manage_users_callback,
+                pattern=r"^(ban_user|manage_seeds|manage_balance)$"
+            ),
             CallbackQueryHandler(handle_ban_user, pattern=r"^confirm_ban$"),
             CallbackQueryHandler(handle_seed_action, pattern=r"^(add_seed|remove_seed)$"),
-            CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^(add_seed_\d+|remove_seed_\d+)$"),
-            CallbackQueryHandler(handle_balance_action, pattern=r"^(add_balance|subtract_balance)$"),
-            CallbackQueryHandler(view_users, pattern=r"^view_users$"),
-            CallbackQueryHandler(view_users, pattern=r"^page_\d+$"),
+            CallbackQueryHandler(
+                handle_seed_selection_admin,
+                pattern=r"^(add_seed_\d+|remove_seed_\d+)$"
+            ),
+            CallbackQueryHandler(
+                handle_balance_action,
+                pattern=r"^(add_balance|subtract_balance)$"
+            ),
+            CallbackQueryHandler(
+                view_users,
+                pattern=r"^(view_users|page_\d+)$"
+            ),
             CallbackQueryHandler(view_user_details, pattern=r"^view_user_\d+$"),
         ],
         states={
             SELECT_SEED: [
                 CallbackQueryHandler(
                     handle_seed_selection,
-                    pattern=r"^(seed_\d+|confirm_seed_purchase|balance_purchase)$"
+                    pattern=r"^(seed_\d+|confirm_land_purchase|balance_purchase)$"
                 ),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
@@ -4524,17 +4559,20 @@ def main():
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             MANAGE_USERS: [
-                CallbackQueryHandler(handle_manage_users_callback, pattern=r"^(ban_user|manage_seeds|manage_balance)$"),
+                CallbackQueryHandler(
+                    handle_manage_users_callback,
+                    pattern=r"^(ban_user|manage_seeds|manage_balance)$"
+                ),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
-                CallbackQueryHandler(view_users, pattern=r"^view_users$"),
+                CallbackQueryHandler(view_users, pattern=r"^(view_users|page_\d+)$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             VIEW_USERS: [
-                CallbackQueryHandler(view_users, pattern=r"^page_\d+$"),
+                CallbackQueryHandler(view_users, pattern=r"^(view_users|page_\d+)$"),
                 CallbackQueryHandler(view_user_details, pattern=r"^view_user_\d+$"),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
-            ],    
+            ],
             ENTER_USER_ID: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_id_common),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
@@ -4546,22 +4584,34 @@ def main():
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             SEED_ACTION: [
-                CallbackQueryHandler(handle_seed_action, pattern=r"^(add_seed|remove_seed)$"),
+                CallbackQueryHandler(
+                    handle_seed_action,
+                    pattern=r"^(add_seed|remove_seed)$"
+                ),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             SELECT_SEED_ADD: [
-                CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^add_seed_\d+$"),
+                CallbackQueryHandler(
+                    handle_seed_selection_admin,
+                    pattern=r"^add_seed_\d+$"
+                ),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             SELECT_SEED_REMOVE: [
-                CallbackQueryHandler(handle_seed_selection_admin, pattern=r"^remove_seed_\d+$"),
+                CallbackQueryHandler(
+                    handle_seed_selection_admin,
+                    pattern=r"^remove_seed_\d+$"
+                ),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
             BALANCE_ACTION: [
-                CallbackQueryHandler(handle_balance_action, pattern=r"^(add_balance|subtract_balance)$"),
+                CallbackQueryHandler(
+                    handle_balance_action,
+                    pattern=r"^(add_balance|subtract_balance)$"
+                ),
                 CallbackQueryHandler(manage_users, pattern=r"^manage_users$"),
                 CallbackQueryHandler(handle_back, pattern=r"^(back_to_menu|wallet)$"),
             ],
@@ -4602,12 +4652,11 @@ def main():
     app.add_handler(CommandHandler("debug_referrals", debug_referrals))
     app.add_handler(CommandHandler("debug_balance", debug_balance))
     app.add_handler(CallbackQueryHandler(debug_callback))
-    app.add_handler(CallbackQueryHandler(debug_callback))
-    app.add_handler(conv_handler)
 
     # Start the bot
     logger.info("Starting bot")
     app.run_polling()
+    logger.info("Bot stopped")
 
 if __name__ == "__main__":
     main()
