@@ -4522,7 +4522,6 @@ def main():
     app.add_handler(CommandHandler("debug_balance", debug_balance))
     app.add_handler(CallbackQueryHandler(debug_callback))
     app.add_handler(CallbackQueryHandler(debug_callback))
-    app.add_handler(CallbackQueryHandler(temp_view_users, pattern=r"^view_users$"))
     app.add_handler(conv_handler)
 
     # Start the bot
