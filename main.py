@@ -1194,7 +1194,7 @@ def insert_transaction(user_id, amount, network, status, type, message_id, addre
         logger.error(f"Error inserting transaction for user {user_id}: {e}")
         raise
 
-(user_id, land_id, amount, period):
+def insert_profit(user_id, land_id, amount, period):
     """Insert a profit record into the database using land_id."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
@@ -1251,7 +1251,7 @@ def get_transaction(transaction_id):
         logger.error(f"Error getting transaction for transaction_id {transaction_id}: {e}")
         return None
 
-(user_id):
+def get_transaction_history(user_id):
     """Retrieve transaction history for a user using lands."""
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
