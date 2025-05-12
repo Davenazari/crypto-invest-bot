@@ -1524,7 +1524,7 @@ def get_main_menu(lang, user_id=None):
     """🌾 Generate main menu keyboard with enhanced visuals."""
     keyboard = [
         [
-            InlineKeyboardButton("🌱 خرید زمین" if lang == "fa" else "🌱 Buy Land", callback_data="buy_seed"),
+            InlineKeyboardButton("🌱 خرید بذر" if lang == "fa" else "🌱 Buy Seed", callback_data="buy_seed"),
             InlineKeyboardButton("🌾 مزرعه من" if lang == "fa" else "🌾 My Farm", callback_data="wallet")
         ],
         [
@@ -1827,8 +1827,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                             JOIN seeds s ON us.seed_id = s.seed_id
                             WHERE us.user_id = %s
                         ''', (user_id,))
-                        lands = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
-                        lands_text = ", ".join(lands) if lands else None
+                        seeds = [row[1] if lang == "fa" else row[0] for row in c.fetchall()]
+                        seeds_text = ", ".join(seeds) if seeds else None
             except psycopg2.Error as e:
                 logger.error(f"Database error retrieving wallet stats for user {user_id}: {e}")
                 await query.message.reply_text(
@@ -1839,14 +1839,14 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 return ConversationHandler.END
 
             await query.message.reply_text(
-                messages[lang]["wallet_balance"](balance, lands_text, total_profit, transaction_count, last_transaction),
+                messages[lang]["wallet_balance"](balance, seeds_text, total_profit, transaction_count, last_transaction),
                 parse_mode="Markdown",
-                reply_markup=get_wallet_menu(lang, balance, bool(lands))
+                reply_markup=get_wallet_menu(lang, balance, bool(seeds))
             )
             return ConversationHandler.END
         elif query.data == "plant_seed":
-            user_lands = get_user_seeds(user_id)
-            if not user_lands:
+            user_seeds = get_user_seeds(user_id)
+            if not user_seeds:
                 await query.message.reply_text(
                     messages[lang]["no_seeds"],
                     parse_mode="Markdown",
@@ -1854,8 +1854,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return ConversationHandler.END
             buttons = [
-                [InlineKeyboardButton(land[1] if lang == "fa" else land[0], callback_data=f"plant_{land[6]}")]
-                for land in user_lands if can_plant_seed(land[4])
+                [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"plant_{seed[6]}")]
+                for seed in user_seeds if can_plant_seed(seed[4])
             ]
             if not buttons:
                 await query.message.reply_text(
@@ -1872,8 +1872,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return PLANT_SEED
         elif query.data == "harvest_seed":
-            user_lands = get_user_seeds(user_id)
-            if not user_lands:
+            user_seeds = get_user_seeds(user_id)
+            if not user_seeds:
                 await query.message.reply_text(
                     messages[lang]["no_seeds"],
                     parse_mode="Markdown",
@@ -1881,8 +1881,8 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return ConversationHandler.END
             buttons = [
-                [InlineKeyboardButton(land[1] if lang == "fa" else land[0], callback_data=f"harvest_{land[6]}")]
-                for land in user_lands if can_harvest_seed(land[4], land[5], seed_id=land[6])
+                [InlineKeyboardButton(seed[1] if lang == "fa" else seed[0], callback_data=f"harvest_{seed[6]}")]
+                for seed in user_seeds if can_harvest_seed(seed[4], seed[5], seed_id=seed[6])
             ]
             if not buttons:
                 await query.message.reply_text(
@@ -1931,24 +1931,24 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     "profit": ("سود", "Profit")
                 }
                 for transaction in transactions:
-                    amount, network, status, type, created_at, land_name, land_name_fa = transaction
+                    amount, network, status, type, created_at, seed_name, seed_name_fa = transaction
                     if not all([amount, status, type, created_at]):
                         logger.warning(f"Invalid transaction data for user {user_id}: {transaction}")
                         continue
                     network_display = network if network else ("بدون شبکه" if lang == "fa" else "No Network")
-                    land_display = (land_name_fa if lang == "fa" else land_name) if land_name else ("بدون زمین" if lang == "fa" else "No Land")
+                    seed_display = (seed_name_fa if lang == "fa" else seed_name) if seed_name else ("بدون بذر" if lang == "fa" else "No Seed")
                     status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
                     type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
                     transaction_text += (
                         f"💰 *{type_text}*: `{amount}` تتر\n"
-                        f"🌱 *زمین*: {land_display}\n"
+                        f"🌱 *بذر*: {seed_display}\n"
                         f"📲 *شبکه*: {network_display}\n"
                         f"📅 *وضعیت*: {status_text}\n"
                         f"⏰ *زمان*: {created_at}\n"
                         f"────────────────────\n"
                     ) if lang == "fa" else (
                         f"💰 *{type_text}*: `{amount}` USDT\n"
-                        f"🌱 *Land*: {land_display}\n"
+                        f"🌱 *Seed*: {seed_display}\n"
                         f"📲 *Network*: {network_display}\n"
                         f"📅 *Status*: {status_text}\n"
                         f"⏰ *Time*: {created_at}\n"
@@ -1985,14 +1985,14 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 type_map = {
                     "deposit": ("واریز", "Deposit")
                 }
-                for amount, network, status, type, created_at, level, land_name, land_name_fa in transactions:
+                for amount, network, status, type, created_at, level, seed_name, seed_name_fa in transactions:
                     status_text = status_map[status][0] if lang == "fa" else status_map[status][1]
                     type_text = type_map[type][0] if lang == "fa" else type_map[type][1]
                     network_display = network if network else ("بدون شبکه" if lang == "fa" else "No Network")
-                    land_display = (land_name_fa if lang == "fa" else land_name) if land_name else ("بدون زمین" if lang == "fa" else "No Land")
+                    seed_display = (seed_name_fa if lang == "fa" else seed_name) if seed_name else ("بدون بذر" if lang == "fa" else "No Seed")
                     transaction_text += (
                         f"💰 *{type_text}*: `{amount}` تتر\n"
-                        f"🌱 *زمین*: {land_display}\n"
+                        f"🌱 *بذر*: {seed_display}\n"
                         f"📲 *شبکه*: {network_display}\n"
                         f"📅 *وضعیت*: {status_text}\n"
                         f"📊 *سطح*: {level}\n"
@@ -2000,11 +2000,11 @@ async def handle_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                         f"────────────────────\n"
                     ) if lang == "fa" else (
                         f"💰 *{type_text}*: `{amount}` USDT\n"
-                        f"🌱 *Land*: {land_display}\n"
+                        f"🌱 *Seed*: {seed_display}\n"
                         f"📲 *Network*: {network_display}\n"
                         f"📅 *Status*: {status_text}\n"
                         f"📊 *Level*: {level}\n"
-                        f"⏰ *Time*: {created_at}\n"
+                        f"⏰ *زمان*: {created_at}\n"
                         f"────────────────────\n"
                     )
                 if not transaction_text:
@@ -2145,58 +2145,58 @@ async def test_referral_profit(update: Update, context: ContextTypes.DEFAULT_TYP
         )    
 
 async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle land selection for purchase."""
+    """Handle seed selection for purchase."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user = get_user(user_id)
     lang = user[0] if user else "en"
     balance = user[1] if user else 0
-    logger.info(f"User {user_id} triggered land selection callback: {query.data}")
+    logger.info(f"User {user_id} triggered seed selection callback: {query.data}")
 
     try:
         if query.data.startswith("seed_"):
-            land_idx = int(query.data.split("_")[1])
-            if land_idx < 0 or land_idx >= len(LANDS):
-                logger.warning(f"Invalid land index {land_idx} for user {user_id}")
+            seed_idx = int(query.data.split("_")[1])
+            if seed_idx < 0 or seed_idx >= len(SEEDS):
+                logger.warning(f"Invalid seed index {seed_idx} for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["error"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-            land = LANDS[land_idx]
-            daily_profit = round(land["price"] * land["daily_profit_rate"], 3)
+            seed = SEEDS[seed_idx]
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
             weekly_profit = round(daily_profit * 7, 3)
             monthly_profit = round(daily_profit * 30, 3)
-            total_monthly = round(land["price"] + monthly_profit, 3)
-            context.user_data["land_idx"] = land_idx
-            context.user_data["land_price"] = land["price"]
+            total_monthly = round(seed["price"] + monthly_profit, 3)
+            context.user_data["seed_idx"] = seed_idx
+            context.user_data["seed_price"] = seed["price"]
             buttons = [
                 [InlineKeyboardButton("💸 پرداخت با واریز" if lang == "fa" else "💸 Pay with Deposit", callback_data="confirm_seed_purchase")]
             ]
-            if balance >= land["price"]:
+            if balance >= seed["price"]:
                 buttons.insert(0, [InlineKeyboardButton("💰 پرداخت با موجودی" if lang == "fa" else "💰 Pay with Balance", callback_data="balance_purchase")])
             buttons.append([InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")])
             await query.message.reply_text(
                 messages[lang]["seed_info"](
-                    land["name_fa" if lang == "fa" else "name"],
-                    land["price"],
+                    seed["name_fa" if lang == "fa" else "name"],
+                    seed["price"],
                     daily_profit,
                     weekly_profit,
                     monthly_profit,
                     total_monthly,
-                    land["emoji"]
+                    seed["emoji"]
                 ),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
             return SELECT_SEED
         elif query.data == "confirm_seed_purchase":
-            land_idx = context.user_data.get("land_idx")
-            land_price = context.user_data.get("land_price")
-            if land_idx is None or land_price is None:
-                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+            seed_idx = context.user_data.get("seed_idx")
+            seed_price = context.user_data.get("seed_price")
+            if seed_idx is None or seed_price is None:
+                logger.warning(f"Missing seed_idx or seed_price for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
@@ -2204,7 +2204,7 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 )
                 return ConversationHandler.END
             await query.message.reply_text(
-                messages[lang]["ask_amount"].format(land_price),
+                messages[lang]["ask_amount"].format(seed_price),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔙 بازگشت" if lang == "fa" else "🔙 Back", callback_data="back_to_menu")]
@@ -2212,30 +2212,30 @@ async def handle_seed_selection(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return DEPOSIT_AMOUNT
         elif query.data == "balance_purchase":
-            land_idx = context.user_data.get("land_idx")
-            land_price = context.user_data.get("land_price")
-            if land_idx is None or land_price is None:
-                logger.warning(f"Missing land_idx or land_price for user {user_id}")
+            seed_idx = context.user_data.get("seed_idx")
+            seed_price = context.user_data.get("seed_price")
+            if seed_idx is None or seed_price is None:
+                logger.warning(f"Missing seed_idx or seed_price for user {user_id}")
                 await query.message.reply_text(
                     messages[lang]["invalid_data"],
                     parse_mode="Markdown",
                     reply_markup=get_main_menu(lang)
                 )
                 return ConversationHandler.END
-            land = LANDS[land_idx]
-            daily_profit = round(land["price"] * land["daily_profit_rate"], 3)
+            seed = SEEDS[seed_idx]
+            daily_profit = round(seed["price"] * seed["daily_profit_rate"], 3)
             weekly_profit = round(daily_profit * 7, 3)
             monthly_profit = round(daily_profit * 30, 3)
-            total_monthly = round(land["price"] + monthly_profit, 3)
+            total_monthly = round(seed["price"] + monthly_profit, 3)
             await query.message.reply_text(
                 messages[lang]["seed_info"](
-                    land["name_fa" if lang == "fa" else "name"],
-                    land["price"],
+                    seed["name_fa" if lang == "fa" else "name"],
+                    seed["price"],
                     daily_profit,
                     weekly_profit,
                     monthly_profit,
                     total_monthly,
-                    land["emoji"]
+                    seed["emoji"]
                 ) + "\n\n" + ("تأیید خرید با موجودی؟" if lang == "fa" else "Confirm purchase with balance?"),
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([
