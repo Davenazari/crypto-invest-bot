@@ -4,7 +4,7 @@ import psycopg2
 import asyncio
 from datetime import datetime, timedelta
 import datetime as dt
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -678,26 +678,8 @@ def init_db():
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor() as c:
-                # اضافه کردن ستون‌های username و created_at به جدول users
-                logger.info("Adding username and created_at columns to users table")
-                c.execute('''
-                    ALTER TABLE users
-                    ADD COLUMN IF NOT EXISTS username TEXT,
-                    ADD COLUMN IF NOT EXISTS created_at TEXT
-                ''')
-                logger.info("Successfully added username and created_at columns to users table")
-
-                # اضافه کردن ستون‌های bonus و fmx_balance به جدول users
-                logger.info("Adding bonus and fmx_balance columns to users table")
-                c.execute('''
-                    ALTER TABLE users
-                    ADD COLUMN IF NOT EXISTS "bonus" REAL DEFAULT 0.0,
-                    ADD COLUMN IF NOT EXISTS fmx_balance REAL DEFAULT 0.0
-                ''')
-                logger.info("Successfully added bonus and fmx_balance columns to users table")
-
-                # تعریف جدول users با ساختار درست
-                logger.info("Creating users table if not exists")
+                # تعریف جدول users با ساختار کامل
+                logger.info("Creating or verifying users table")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS users (
                         user_id BIGINT PRIMARY KEY,
@@ -706,21 +688,28 @@ def init_db():
                         username TEXT,
                         created_at TEXT,
                         "bonus" REAL DEFAULT 0.0,
-                        fmx_balance REAL DEFAULT 0.0
+                        fmx_balance REAL DEFAULT 0.0,
+                        is_banned BOOLEAN DEFAULT FALSE
                     )
                 ''')
                 logger.info("Users table created or already exists")
 
-                # اضافه کردن ستون is_banned
-                logger.info("Adding is_banned column to users table")
+                # اضافه کردن ستون‌های اضافی به جدول users اگه وجود ندارن
+                logger.info("Ensuring all columns exist in users table")
                 c.execute('''
                     ALTER TABLE users
+                    ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en',
+                    ADD COLUMN IF NOT EXISTS balance REAL DEFAULT 0.0,
+                    ADD COLUMN IF NOT EXISTS username TEXT,
+                    ADD COLUMN IF NOT EXISTS created_at TEXT,
+                    ADD COLUMN IF NOT EXISTS "bonus" REAL DEFAULT 0.0,
+                    ADD COLUMN IF NOT EXISTS fmx_balance REAL DEFAULT 0.0,
                     ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE
                 ''')
-                logger.info("Successfully added is_banned column to users table")
+                logger.info("All columns verified or added to users table")
 
                 # تعریف جدول seeds
-                logger.info("Creating seeds table if not exists")
+                logger.info("Creating or verifying seeds table")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS seeds (
                         seed_id SERIAL PRIMARY KEY,
@@ -733,7 +722,7 @@ def init_db():
                 logger.info("Seeds table created or already exists")
 
                 # تعریف جدول user_seeds
-                logger.info("Creating user_seeds table if not exists")
+                logger.info("Creating or verifying user_seeds table")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS user_seeds (
                         id SERIAL PRIMARY KEY,
@@ -749,7 +738,7 @@ def init_db():
                 logger.info("User_seeds table created or already exists")
 
                 # تعریف جدول transactions
-                logger.info("Creating transactions table if not exists")
+                logger.info("Creating or verifying transactions table")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS transactions (
                         id SERIAL PRIMARY KEY,
@@ -769,7 +758,7 @@ def init_db():
                 logger.info("Transactions table created or already exists")
 
                 # تعریف جدول referrals
-                logger.info("Creating referrals table if not exists")
+                logger.info("Creating or verifying referrals table")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS referrals (
                         id SERIAL PRIMARY KEY,
@@ -783,7 +772,7 @@ def init_db():
                 logger.info("Referrals table created or already exists")
 
                 # تعریف جدول referral_profits
-                logger.info("Creating referral_profits table if not exists")
+                logger.info("Creating or verifying referral_profits table")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS referral_profits (
                         id SERIAL PRIMARY KEY,
@@ -801,7 +790,7 @@ def init_db():
                 logger.info("Referral_profits table created or already exists")
 
                 # تعریف جدول profits
-                logger.info("Creating profits table if not exists")
+                logger.info("Creating or verifying profits table")
                 c.execute('''
                     CREATE TABLE IF NOT EXISTS profits (
                         id SERIAL PRIMARY KEY,
@@ -839,7 +828,7 @@ def init_db():
                     logger.info("Successfully updated daily_profit_rate in seeds table")
 
                 # چک کردن وجود ستون seed_id در جدول transactions
-                logger.info("Checking for seed_id column in transactions table")
+                logger.info("Verifying seed_id column in transactions table")
                 c.execute("""
                     SELECT column_name 
                     FROM information_schema.columns 
@@ -861,10 +850,13 @@ def init_db():
                 conn.commit()
                 logger.info("Database initialized and seeds updated successfully")
     except Exception as e:
-        logger.error(f"Error initializing database: {str(e)}", exc_info=True)
+        logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
         bot_token = os.getenv("BOT_TOKEN")
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
+        if bot_token:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
+        else:
+            logger.error("BOT_TOKEN not set, cannot notify admin")
         raise
 
 def fix_users_table():
