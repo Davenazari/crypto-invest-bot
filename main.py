@@ -4,6 +4,7 @@ import psycopg2
 import asyncio
 from datetime import datetime, timedelta
 import datetime as dt
+from aiogram import Bot
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import (
     ApplicationBuilder,
@@ -853,8 +854,12 @@ def init_db():
         logger.error(f"Failed to initialize database: {str(e)}", exc_info=True)
         bot_token = os.getenv("BOT_TOKEN")
         if bot_token:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
+            try:
+                from aiogram import Bot
+                loop = asyncio.get_event_loop()
+                loop.run_until_complete(notify_admin_error(bot_token, f"Failed to initialize database: {str(e)}"))
+            except Exception as notify_error:
+                logger.error(f"Failed to notify admin: {str(notify_error)}", exc_info=True)
         else:
             logger.error("BOT_TOKEN not set, cannot notify admin")
         raise
